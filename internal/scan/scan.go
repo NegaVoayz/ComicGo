@@ -7,7 +7,6 @@ package scan
 import (
 	"context"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,15 +17,9 @@ import (
 
 	"comicgo/internal/cache"
 	"comicgo/internal/comic"
-	"comicgo/internal/imgutil"
 	"comicgo/internal/index"
 	"comicgo/internal/meta"
 	"comicgo/internal/model"
-)
-
-const (
-	thumbMaxDim  = 320
-	thumbQuality = 80
 )
 
 // Options configures one scan pass.
@@ -46,9 +39,8 @@ type jobItem struct {
 }
 
 type parseResult struct {
-	rec   index.Record
-	thumb []byte
-	err   error
+	rec index.Record
+	err error
 }
 
 func isComicExt(path string) bool {
@@ -113,11 +105,11 @@ func Run(ctx context.Context, o Options) error {
 			go func() {
 				defer wg.Done()
 				for it := range jobs {
-					rec, thumb, err := parseOne(it)
+					rec, err := parseOne(it)
 					select {
 					case <-ctxCancel.Done():
 						return
-					case results <- parseResult{rec: rec, thumb: thumb, err: err}:
+					case results <- parseResult{rec: rec, err: err}:
 					}
 				}
 			}()
@@ -150,13 +142,10 @@ func Run(ctx context.Context, o Options) error {
 				// Other parse failures (corrupt/non-zip with a .zip name) are
 				// ignored: the file simply is not indexed.
 			} else {
-				id, err := o.Store.CommitComic(res.rec)
-				if err != nil {
+				if _, err := o.Store.CommitComic(res.rec); err != nil {
 					if o.OnError != nil {
 						o.OnError(res.rec.Path, err)
 					}
-				} else if len(res.thumb) > 0 {
-					_ = o.Thumbs.Write(id, res.thumb)
 				}
 			}
 			completed++
@@ -172,12 +161,16 @@ func Run(ctx context.Context, o Options) error {
 	return pruneRemoved(o, seen)
 }
 
-func parseOne(it jobItem) (index.Record, []byte, error) {
+// parseOne extracts a comic's metadata without decoding any images: reading the
+// comment + building the page map only touches the zip central directory, so a
+// full-library scan is a light I/O pass. Cover thumbnails are produced lazily,
+// on demand, the first time each cover is shown (see serve/coverBytes).
+func parseOne(it jobItem) (index.Record, error) {
 	rec := index.Record{Path: it.path, FileSize: it.size, MtimeNs: it.mtime}
 	a, err := comic.Open(it.path)
 	if err != nil {
 		rec.Path = it.path // keep path so ErrNotAComic results can prune
-		return rec, nil, err
+		return rec, err
 	}
 	defer a.Close()
 
@@ -195,24 +188,7 @@ func parseOne(it jobItem) (index.Record, []byte, error) {
 		HasNonUTF8: a.HasNonUTF8(),
 		KV:         kv,
 	}
-	return rec, thumbOf(a), nil
-}
-
-func thumbOf(a *comic.Archive) []byte {
-	rc, err := a.OpenPage(0)
-	if err != nil {
-		return nil
-	}
-	defer rc.Close()
-	b, err := io.ReadAll(rc)
-	if err != nil {
-		return nil
-	}
-	thumb, err := imgutil.ThumbJPEG(b, thumbMaxDim, thumbQuality)
-	if err != nil {
-		return nil
-	}
-	return thumb
+	return rec, nil
 }
 
 func pruneRemoved(o Options, seen map[string]struct{}) error {

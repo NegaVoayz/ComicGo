@@ -84,14 +84,16 @@ func TestScanAddSkipPrune(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("after first scan rows = %d, want 2", len(rows))
 	}
-	if !thumbs.Has(rows[0].ID) || !thumbs.Has(rows[1].ID) {
-		t.Error("thumbnails were not written")
-	}
 	if rows[0].KV["Title"] == "" {
 		t.Error("comment metadata not parsed")
 	}
 	if rows[0].PageCount != 3 {
 		t.Errorf("pageCount = %d, want 3", rows[0].PageCount)
+	}
+	// covers are lazy now: the scan must NOT write thumbnails; the media
+	// provider still serves them on demand (covered by the e2e test)
+	if thumbs.Has(rows[0].ID) || thumbs.Has(rows[1].ID) {
+		t.Error("scan wrote thumbnails; expected lazy on-demand cover generation")
 	}
 
 	// add a comic + rescan (a and b unchanged -> skipped by fingerprint)
