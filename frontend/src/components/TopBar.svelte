@@ -67,6 +67,7 @@
 
 <style>
   .topbar {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 10px;

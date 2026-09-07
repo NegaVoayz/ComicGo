@@ -24,9 +24,15 @@ html, body {
   font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* the shelf scrolls internally; never a stray page-level blank */
 }
 
-#app { height: 100%; }
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
 button {
   font: inherit;
