@@ -206,7 +206,7 @@
             sortRules={sortRules}
             refreshKey={refreshKey}
             scanning={scanning}
-            gridHeight={winH > 0 ? Math.max(320, winH - 150) : 600}
+            gridHeight={winH > 0 ? Math.max(300, winH - 90) : 600}
             onOpen={openReader}
             onChanged={bump}
           />
@@ -242,7 +242,7 @@
 
 <style>
   .shelf {
-    padding-bottom: 30px;
+    padding-bottom: 4px;
   }
   .section {
     margin: 14px 18px;
