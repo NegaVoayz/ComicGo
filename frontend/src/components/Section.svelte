@@ -10,6 +10,7 @@
     filterRules,
     sortRules,
     refreshKey,
+    scanning = false,
     gridHeight = 600,
     onOpen,
     onChanged,
@@ -18,6 +19,7 @@
     filterRules: RuleInfo[]
     sortRules: RuleInfo[]
     refreshKey: number
+    scanning?: boolean
     gridHeight?: number
     onOpen: (c: ComicCard) => void
     onChanged: () => void
@@ -25,11 +27,12 @@
 
   let total = $state(0)
 
-  // Refetch the count whenever the filter or the global refresh key changes
-  // (scan finished, favorite toggled, reader closed, ...). Otherwise a section
-  // that mounts mid-scan sticks at 0 ("Nothing here yet") forever.
+  // Refetch the count whenever the filter, the scan state, or the global
+  // refresh key changes (scan finished, favorite toggled, reader closed, ...).
+  // Otherwise a section that mounts mid-scan sticks at 0 ("Nothing here yet").
   $effect(() => {
     void refreshKey
+    void scanning
     countComics(section.filterRuleId || '')
       .then((n) => (total = n))
       .catch(() => (total = 0))
@@ -73,14 +76,18 @@
       </select>
     </div>
   </div>
-  <VirtualGrid
-    total={total}
-    {load}
-    {refreshKey}
-    height={gridHeight}
-    onOpen={onOpen}
-    onChanged={onChanged}
-  />
+  {#if scanning && total === 0}
+    <div class="hint">Scanning your library…</div>
+  {:else}
+    <VirtualGrid
+      total={total}
+      {load}
+      {refreshKey}
+      height={gridHeight}
+      onOpen={onOpen}
+      onChanged={onChanged}
+    />
+  {/if}
 </section>
 
 <style>
@@ -108,5 +115,12 @@
     margin-left: auto;
     display: flex;
     gap: 6px;
+  }
+  .hint {
+    padding: 40px 20px;
+    color: var(--text-dim);
+    text-align: center;
+    background: var(--bg);
+    border-radius: var(--radius);
   }
 </style>

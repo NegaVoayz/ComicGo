@@ -3,6 +3,7 @@
     roots,
     scanning,
     progress,
+    comics = 0,
     onAdd,
     onScan,
     onCancel,
@@ -11,13 +12,14 @@
     roots: string[]
     scanning: boolean
     progress: { done: number; total: number } | null
+    comics?: number
     onAdd: () => void
     onScan: () => void
     onCancel: () => void
     onReloadLayout: () => void
   } = $props()
 
-  const pct = progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
+  const pct = $derived(progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0)
 </script>
 
 <div class="topbar">
@@ -29,6 +31,9 @@
       {#each roots as r (r)}<span class="root">{r}</span>{/each}
     {/if}
   </div>
+  {#if comics > 0}
+    <span class="chip">{comics} indexed</span>
+  {/if}
   <div class="actions">
     {#if scanning}
       <div class="scanbar">
@@ -75,6 +80,16 @@
     text-overflow: ellipsis;
   }
   .dim { color: var(--text-dim); }
+  .chip {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 1px 9px;
+    font-size: 12px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
   .actions { display: flex; align-items: center; gap: 8px; }
   .scanbar {
     width: 160px;

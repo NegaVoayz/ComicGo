@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import {
+    countComics,
     getLayout,
     getSettings,
     listRules,
@@ -33,11 +34,23 @@
   let scanning = $state(false)
   let scanProgress = $state<{ done: number; total: number } | null>(null)
   let refreshKey = $state(0)
+  let indexed = $state(0)
   let reader: ComicRef | null = $state(null)
 
   function bump() {
     refreshKey += 1
   }
+
+  // keep the top-bar "N indexed" readout in sync with backend data changes
+  $effect(() => {
+    const k = refreshKey
+    void k
+    if (settings && (settings.libraryRoots ?? []).length > 0) {
+      countComics('')
+        .then((n) => (indexed = n))
+        .catch(() => {})
+    }
+  })
 
   async function loadAll() {
     try {
@@ -101,6 +114,7 @@
   async function doReloadLayout() {
     try {
       await reloadLayout()
+      bump() // force section counts to re-query too
     } catch (e: any) {
       error(e?.message ?? 'Could not reload layout.json')
     }
@@ -123,6 +137,7 @@
     roots={settings?.libraryRoots ?? []}
     {scanning}
     progress={scanProgress}
+    comics={indexed}
     onAdd={addFolder}
     onScan={doScan}
     onCancel={doCancel}
@@ -140,6 +155,7 @@
             filterRules={filterRules}
             sortRules={sortRules}
             refreshKey={refreshKey}
+            scanning={scanning}
             onOpen={openReader}
             onChanged={bump}
           />
