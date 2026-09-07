@@ -202,7 +202,9 @@
     overflow-y: auto;
     overflow-x: hidden;
     position: relative;
-    border-radius: var(--radius);
+    /* keep the top corners rounded but square the bottom so the bottom border
+       spans the full width like the left/right borders do */
+    border-radius: var(--radius) var(--radius) 0 0;
     background: var(--bg);
     border: 1px solid var(--line);
   }
