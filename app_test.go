@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"comicgo/internal/cache"
 	"comicgo/internal/index"
 	"comicgo/internal/model"
 )
@@ -58,5 +59,45 @@ func TestAppCountQueryProgressFav(t *testing.T) {
 	}
 	if p := a.GetProgress(id); p.LastPage != 2 {
 		t.Errorf("progress lastPage = %d, want 2", p.LastPage)
+	}
+}
+
+func TestPurgeRootOnlyAffectsTargetDir(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "app.db")
+	st, err := index.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	dirA := filepath.Join(`C:\libA`)
+	dirB := filepath.Join(`C:\libB`)
+	for _, d := range []string{dirA, dirB} {
+		if _, err := st.CommitComic(index.Record{
+			Path: filepath.Join(d, "c.cbz"), Dir: d, Filename: "c.cbz",
+			FileSize: 10, MtimeNs: 1, PageCount: 2, KV: map[string]string{},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	a := NewApp()
+	a.store = st
+	a.thumbs = cache.NewThumbStore(filepath.Join(t.TempDir(), "thumbs"))
+
+	a.purgeRoot(dirA)
+
+	rows, err := st.AllRows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("after purging dirA rows = %d, want 1 (dirB untouched)", len(rows))
+	}
+	if rows[0].Dir != dirB {
+		t.Errorf("remaining row is in %q, want dirB %q", rows[0].Dir, dirB)
+	}
+	if n := a.CountComics(""); n != 1 {
+		t.Errorf("CountComics after purge = %d, want 1", n)
 	}
 }

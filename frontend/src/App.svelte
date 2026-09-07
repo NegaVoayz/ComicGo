@@ -154,7 +154,8 @@
     const yes = window.confirm(`Remove "${dir}" from your library?\n\nThe files will not be deleted.`)
     if (!yes) return
     try {
-      settings = await removeLibrary(dir)
+      await removeLibrary(dir) // backend binding returns void, NOT settings
+      settings = await getSettings() // re-read the authoritative roots
       bump()
       ok('Folder removed — its comics were unindexed')
     } catch (e: any) {
