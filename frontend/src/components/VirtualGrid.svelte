@@ -1,6 +1,8 @@
 <script lang="ts">
-  // A windowed, virtualized grid. Only the cells near the viewport exist in
-  // the DOM; pages are fetched lazily from the backend as the user scrolls.
+  // A windowed, virtualized grid. Only cells near the viewport exist in the
+  // DOM. Loading is driven imperatively (mount + scroll), NOT by $effect —
+  // a reactive effect loop here froze the whole app (effect_update_depth_exceeded).
+  import { onMount } from 'svelte'
   import ComicCard from './ComicCard.svelte'
   import type { ComicCard as Card } from '../lib/api'
 
@@ -28,82 +30,100 @@
 
   let outer: HTMLElement | undefined = $state()
   let scrollTop = $state(0)
-  let width = $state(0)
+  let width = $state(900)
   let tick = $state(0)
 
   const loaded = new Map<number, Card>()
   const pending = new Set<number>()
+  let ro: ResizeObserver | null = null
+  let raf = 0
 
   const ROWS_PER_CHUNK = 6
   const CAPTION_H = 44
 
-  const cols = $derived(width > 0 ? Math.max(2, Math.floor((width - pad + gap) / (minCard + gap))) : 1)
-  const cardW = $derived(
-    width > 0 ? Math.max(80, Math.floor((width - pad - gap * (cols - 1)) / cols)) : minCard
-  )
-  const cardH = $derived(Math.floor(cardW * (4 / 3)))
-  const rowH = $derived(cardH + CAPTION_H + gap)
-  const totalRows = $derived(total > 0 ? Math.ceil(total / cols) : 0)
+  function geometry() {
+    const c = width > 0 ? Math.max(2, Math.floor((width - pad + gap) / (minCard + gap))) : 1
+    const w = width > 0 ? Math.max(80, Math.floor((width - pad - gap * (c - 1)) / c)) : minCard
+    const h = Math.floor(w * (4 / 3))
+    return { cols: c, cardW: w, rowH: h + CAPTION_H + gap }
+  }
 
-  // visible row range
+  const cols = $derived(geometry().cols)
+  const cardW = $derived(geometry().cardW)
+  const cardH = $derived(Math.floor(cardW * (4 / 3)))
+  const rowH = $derived(geometry().rowH)
+  const totalRows = $derived(total > 0 ? Math.ceil(total / cols) : 0)
   const rowTop = $derived(Math.max(0, Math.floor(scrollTop / rowH) - 1))
   const rowBottom = $derived(totalRows > 0 ? Math.min(totalRows - 1, Math.ceil((scrollTop + height) / rowH)) : -1)
 
-  $effect(() => {
-    // reset whenever the backing dataset changes (total or refresh key)
-    const _t = total
-    const _k = refreshKey
-    loaded.clear()
-    pending.clear()
-    tick++
-    scrollTop = 0
-    if (outer) outer.scrollTop = 0
-  })
-  $effect(() => {
-    const el = outer
-    if (!el) return
-    width = el.clientWidth
-    const ro = new ResizeObserver(() => {
-      width = el.clientWidth
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  })
+  function viewportH() {
+    return (outer && outer.clientHeight > 0 ? outer.clientHeight : height) || height
+  }
 
-  // fetch pages covering the visible window
-  $effect(() => {
-    if (width === 0 || total === 0 || cols < 1) return
-    const pageSize = Math.max(1, ROWS_PER_CHUNK * cols)
-    let begin = Math.max(0, rowTop * cols)
-    let end = Math.min(total - 1, (rowBottom + 1) * cols - 1)
-    if (end < begin) end = begin
-    for (let pageStart = Math.floor(begin / pageSize) * pageSize; pageStart <= end; pageStart += pageSize) {
-      if (pending.has(pageStart)) continue
+  function loadVisible() {
+    raf = 0
+    if (!outer || total <= 0) return
+    const { cols: c } = geometry()
+    const rH = geometry().rowH
+    const tr = Math.ceil(total / c)
+    const st = outer.scrollTop
+    const top = Math.max(0, Math.floor(st / rH) - 1)
+    const bot = tr > 0 ? Math.min(tr - 1, Math.ceil((st + viewportH()) / rH)) : -1
+    if (bot < top) return
+    const pageSize = Math.max(1, ROWS_PER_CHUNK * c)
+    const begin = top * c
+    const end = Math.min(total - 1, (bot + 1) * c - 1)
+    for (let p = Math.floor(begin / pageSize) * pageSize; p <= end; p += pageSize) {
+      if (pending.has(p)) continue
       let haveAll = true
-      for (let i = pageStart; i < Math.min(total, pageStart + pageSize); i++) {
+      for (let i = p; i < Math.min(total, p + pageSize); i++) {
         if (!loaded.has(i)) {
           haveAll = false
           break
         }
       }
       if (haveAll) continue
-      pending.add(pageStart)
-      load(pageStart, pageSize)
+      pending.add(p)
+      load(p, pageSize)
         .then((cards) => {
-          cards.forEach((c, i) => loaded.set(pageStart + i, c))
+          cards.forEach((card, i) => loaded.set(p + i, card))
         })
         .catch(() => {
-          /* transient; next scroll will retry */
+          /* transient; next scroll retries */
         })
         .finally(() => {
-          pending.delete(pageStart)
+          pending.delete(p)
           tick++
         })
+    }
+  }
+
+  function scheduleLoad() {
+    cancelAnimationFrame(raf)
+    raf = requestAnimationFrame(loadVisible)
+  }
+
+  onMount(() => {
+    const el = outer
+    if (el) {
+      if (el.clientWidth > 0) width = el.clientWidth
+      ro = new ResizeObserver(() => {
+        if (el.clientWidth > 0) width = el.clientWidth
+        scheduleLoad()
+      })
+      ro.observe(el)
+      scheduleLoad()
+    }
+    return () => {
+      if (ro) ro.disconnect()
+      cancelAnimationFrame(raf)
     }
   })
 
   function onScroll() {
-    if (outer) scrollTop = outer.scrollTop
+    if (!outer) return
+    scrollTop = outer.scrollTop
+    scheduleLoad()
   }
 </script>
 

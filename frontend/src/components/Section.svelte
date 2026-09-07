@@ -4,6 +4,11 @@
   import { countComics, listComics, updateSectionRule } from '../lib/api'
   import type { ComicCard, LayoutSection, RuleInfo } from '../lib/api'
   import VirtualGrid from './VirtualGrid.svelte'
+  import * as Go from '../../wailsjs/go/main/App'
+
+  const report = (m: string) => {
+    Go.ReportFrontend(m).catch(() => {})
+  }
 
   let {
     section,
@@ -34,8 +39,14 @@
     void refreshKey
     void scanning
     countComics(section.filterRuleId || '')
-      .then((n) => (total = n))
-      .catch(() => (total = 0))
+      .then((n) => {
+        total = n
+        report(`Section(${section.id}) count resolved -> ${n} scanning=${scanning} rk=${refreshKey}`)
+      })
+      .catch(() => {
+        total = 0
+        report(`Section(${section.id}) countComics rejected`)
+      })
   })
 
   async function load(offset: number, limit: number): Promise<ComicCard[]> {
@@ -79,14 +90,16 @@
   {#if scanning && total === 0}
     <div class="hint">Scanning your library…</div>
   {:else}
-    <VirtualGrid
-      total={total}
-      {load}
-      {refreshKey}
-      height={gridHeight}
-      onOpen={onOpen}
-      onChanged={onChanged}
-    />
+    {#key `${total}:${refreshKey}`}
+      <VirtualGrid
+        total={total}
+        {load}
+        {refreshKey}
+        height={gridHeight}
+        onOpen={onOpen}
+        onChanged={onChanged}
+      />
+    {/key}
   {/if}
 </section>
 

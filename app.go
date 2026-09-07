@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"comicgo/internal/cache"
 	"comicgo/internal/comic"
@@ -56,6 +58,19 @@ func (m mediaProvider) Page(id int64, n int) ([]byte, string, error) {
 
 func NewApp() *App {
 	return &App{metasDirty: true, pageCache: cache.NewLRU(8 << 20)}
+}
+
+// dbg appends one line to <appdir>/tmp/debug.log when COMICGO_DEBUG=1.
+func (a *App) dbg(format string, args ...any) {
+	if os.Getenv("COMICGO_DEBUG") == "" || a == nil || a.paths == nil {
+		return
+	}
+	line := time.Now().Format("15:04:05.000") + " " + fmt.Sprintf(format, args...) + "\n"
+	if f, err := os.OpenFile(filepath.Join(a.paths.Temp, "debug.log"),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		_, _ = f.WriteString(line)
+		_ = f.Close()
+	}
 }
 
 // startup is called once when the app boots.
@@ -204,6 +219,7 @@ func (a *App) startScan() {
 	a.mu.Unlock()
 
 	roots := append([]string(nil), a.settings.LibraryRoots...)
+	a.dbg("startScan begin roots=%v", roots)
 	runtime.EventsEmit(a.ctx, "scan:started", struct{}{})
 
 	go func() {
@@ -223,6 +239,7 @@ func (a *App) startScan() {
 		a.scanCancel = nil
 		a.mu.Unlock()
 		a.invalidate()
+		a.dbg("scan finished err=%v", err)
 
 		if err != nil {
 			runtime.EventsEmit(a.ctx, "scan:done", map[string]any{"error": err.Error()})
@@ -248,7 +265,14 @@ func (a *App) ListRules() []model.RuleInfo {
 
 // CountComics returns the number of comics matching a filter ("" = all).
 func (a *App) CountComics(filterRuleID string) int {
-	return len(a.filtered(filterRuleID))
+	n := len(a.filtered(filterRuleID))
+	a.dbg("CountComics(filter=%q) -> %d", filterRuleID, n)
+	return n
+}
+
+// ReportFrontend lets the UI log diagnostics into the debug file (debugging aid).
+func (a *App) ReportFrontend(msg string) {
+	a.dbg("FRONTEND: %s", msg)
 }
 
 // GetComics returns one paged slice of cards matching the query.
@@ -282,6 +306,7 @@ func (a *App) GetComics(q model.PageQuery) ([]model.ComicCard, error) {
 			CoverURL:   a.shelfCoverURL(m.ID),
 		})
 	}
+	a.dbg("GetComics(%+v) -> %d cards of %d matched", q, len(cards), len(list))
 	return cards, nil
 }
 
@@ -553,8 +578,13 @@ func (a *App) currentMetas() []model.Meta {
 				metas = append(metas, rowToMeta(rows[i]))
 			}
 			a.metas = metas
+			a.dbg("currentMetas reload: %d rows (dirty was true)", len(rows))
+		} else {
+			a.dbg("currentMetas reload ERROR: %v", err)
 		}
 		a.metasDirty = false
+	} else {
+		a.dbg("currentMetas cache hit: %d metas (not dirty)", len(a.metas))
 	}
 	return a.metas
 }

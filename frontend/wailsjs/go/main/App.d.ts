@@ -38,6 +38,8 @@ export function ReloadLayout():Promise<void>;
 
 export function RemoveLibrary(arg1:string):Promise<void>;
 
+export function ReportFrontend(arg1:string):Promise<void>;
+
 export function SaveLayout(arg1:model.LayoutDoc):Promise<void>;
 
 export function SetProgress(arg1:number,arg2:number,arg3:number):Promise<void>;

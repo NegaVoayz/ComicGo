@@ -19,6 +19,11 @@
   import Reader from './components/Reader.svelte'
   import Toasts from './components/Toasts.svelte'
   import { error } from './lib/toast'
+  import * as Go from '../wailsjs/go/main/App'
+
+  const logFront = (m: string) => {
+    Go.ReportFrontend(m).catch(() => {})
+  }
 
   interface ComicRef {
     id: number
@@ -87,12 +92,22 @@
     const un5 = on('scan:error', (e: any) => {
       error(e?.path ? `Scan: ${e.path}: ${e.error}` : `Scan error: ${e?.error ?? ''}`)
     })
+    const onErr = (e: any) => {
+      const st = e?.error?.stack ? String(e.error.stack).split('\n').slice(0, 8).join(' < ') : ''
+      logFront('window.error: ' + (e?.message ?? '') + ' STACK[' + st + ']')
+    }
+    const onRej = (e: any) =>
+      logFront('unhandledrejection: ' + (e?.reason?.message ?? String(e?.reason ?? '')))
+    window.addEventListener('error', onErr)
+    window.addEventListener('unhandledrejection', onRej)
     return () => {
       un1()
       un2()
       un3()
       un4()
       un5()
+      window.removeEventListener('error', onErr)
+      window.removeEventListener('unhandledrejection', onRej)
     }
   })
 

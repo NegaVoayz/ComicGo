@@ -74,6 +74,10 @@ export function RemoveLibrary(arg1) {
   return window['go']['main']['App']['RemoveLibrary'](arg1);
 }
 
+export function ReportFrontend(arg1) {
+  return window['go']['main']['App']['ReportFrontend'](arg1);
+}
+
 export function SaveLayout(arg1) {
   return window['go']['main']['App']['SaveLayout'](arg1);
 }
