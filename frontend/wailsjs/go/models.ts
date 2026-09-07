@@ -203,6 +203,7 @@ export namespace model {
 	    limit: number;
 	    filterRuleId: string;
 	    sortRuleId: string;
+	    search: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PageQuery(source);
@@ -214,6 +215,7 @@ export namespace model {
 	        this.limit = source["limit"];
 	        this.filterRuleId = source["filterRuleId"];
 	        this.sortRuleId = source["sortRuleId"];
+	        this.search = source["search"];
 	    }
 	}
 	export class PageRef {

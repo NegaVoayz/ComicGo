@@ -76,6 +76,7 @@ type PageQuery struct {
 	Limit        int    `json:"limit"`
 	FilterRuleID string `json:"filterRuleId"` // "" = no filter
 	SortRuleID   string `json:"sortRuleId"`   // "" = default ordering (by title)
+	Search       string `json:"search"`       // free-text query, matched against title/filename/meta
 }
 
 // RuleInfo describes a registered plugin rule for the UI dropdowns.

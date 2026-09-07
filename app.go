@@ -429,6 +429,44 @@ func (a *App) CountComics(filterRuleID string) int {
 	return n
 }
 
+// CountMatching returns the number of comics matching a free-text query
+// (optionally narrowed by a filter rule). Used by the search box.
+func (a *App) CountMatching(search, filterRuleID string) int {
+	return len(a.selection(search, filterRuleID))
+}
+
+// selection returns the comics matching an optional free-text search and an
+// optional filter rule. Search is case-insensitive substring over title,
+// filename and every metadata value/key.
+func (a *App) selection(search, filterRuleID string) []model.Meta {
+	list := a.filtered(filterRuleID)
+	needle := strings.ToLower(strings.TrimSpace(search))
+	if needle == "" {
+		return list
+	}
+	out := make([]model.Meta, 0, len(list))
+	for _, m := range list {
+		if searchMetaMatch(m, needle) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func searchMetaMatch(m model.Meta, needle string) bool {
+	if strings.Contains(strings.ToLower(m.Title()), needle) ||
+		strings.Contains(strings.ToLower(m.Filename), needle) {
+		return true
+	}
+	for k, v := range m.KV {
+		if strings.Contains(strings.ToLower(k), needle) ||
+			strings.Contains(strings.ToLower(v), needle) {
+			return true
+		}
+	}
+	return false
+}
+
 // ReportFrontend lets the UI log diagnostics into the debug file (debugging aid).
 func (a *App) ReportFrontend(msg string) {
 	a.dbg("FRONTEND: %s", msg)
@@ -436,7 +474,7 @@ func (a *App) ReportFrontend(msg string) {
 
 // GetComics returns one paged slice of cards matching the query.
 func (a *App) GetComics(q model.PageQuery) ([]model.ComicCard, error) {
-	list := a.filtered(q.FilterRuleID)
+	list := a.selection(q.Search, q.FilterRuleID)
 	if q.SortRuleID != "" {
 		if sr := plugins.SortByID(q.SortRuleID); sr != nil {
 			sort.SliceStable(list, func(i, j int) bool { return sr.Less(list[i], list[j]) })

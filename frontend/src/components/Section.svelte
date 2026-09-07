@@ -1,7 +1,7 @@
 <script lang="ts">
   // A single grid section from layout.json: header + filter/sort rule pickers
   // + a virtualized grid.
-  import { countComics, listComics, updateSectionRule } from '../lib/api'
+  import { countMatching, listComics, updateSectionRule } from '../lib/api'
   import type { ComicCard, LayoutSection, RuleInfo } from '../lib/api'
   import VirtualGrid from './VirtualGrid.svelte'
   import * as Go from '../../wailsjs/go/main/App'
@@ -16,6 +16,7 @@
     sortRules,
     refreshKey,
     scanning = false,
+    searchText = '',
     gridHeight = 600,
     onOpen,
     onChanged,
@@ -25,6 +26,7 @@
     sortRules: RuleInfo[]
     refreshKey: number
     scanning?: boolean
+    searchText?: string
     gridHeight?: number
     onOpen: (c: ComicCard) => void
     onChanged: () => void
@@ -32,20 +34,19 @@
 
   let total = $state(0)
 
-  // Refetch the count whenever the filter, the scan state, or the global
-  // refresh key changes (scan finished, favorite toggled, reader closed, ...).
-  // Otherwise a section that mounts mid-scan sticks at 0 ("Nothing here yet").
+  // Refetch the count whenever the search/filter/scan/refresh change.
   $effect(() => {
     void refreshKey
     void scanning
-    countComics(section.filterRuleId || '')
+    void searchText
+    countMatching(searchText, section.filterRuleId || '')
       .then((n) => {
         total = n
         report(`Section(${section.id}) count resolved -> ${n} scanning=${scanning} rk=${refreshKey}`)
       })
       .catch(() => {
         total = 0
-        report(`Section(${section.id}) countComics rejected`)
+        report(`Section(${section.id}) countMatching rejected`)
       })
   })
 
@@ -55,6 +56,7 @@
       limit,
       filterRuleId: section.filterRuleId || '',
       sortRuleId: section.sortRuleId || '',
+      search: searchText,
     })
     return cards as unknown as ComicCard[]
   }
@@ -90,7 +92,7 @@
   {#if scanning && total === 0}
     <div class="hint">Scanning your library…</div>
   {:else}
-    {#key `${total}|${section.filterRuleId || ''}|${section.sortRuleId || ''}`}
+    {#key `${total}|${searchText}|${section.filterRuleId || ''}|${section.sortRuleId || ''}`}
       <!-- remount only when this section's dataset really changes; favorite
            toggles and progress updates must NOT reload every cover -->
       <VirtualGrid

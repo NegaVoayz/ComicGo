@@ -62,6 +62,53 @@ func TestAppCountQueryProgressFav(t *testing.T) {
 	}
 }
 
+func TestSearchMatching(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "app.db")
+	st, err := index.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	rows := []index.Record{
+		{Path: `C:\s\a.cbz`, Dir: `C:\s`, Filename: "a.cbz", FileSize: 1, MtimeNs: 1,
+			PageCount: 2, KV: map[string]string{"Title": "Alpha Space"}},
+		{Path: `C:\s\z.cbz`, Dir: `C:\s`, Filename: "zeta.zip", FileSize: 2, MtimeNs: 2,
+			PageCount: 3, KV: map[string]string{}},
+		{Path: `C:\s\t.cbz`, Dir: `C:\s`, Filename: "t.cbz", FileSize: 3, MtimeNs: 3,
+			PageCount: 1, KV: map[string]string{"Author": "Tanaka Yoshi"}},
+	}
+	for _, r := range rows {
+		if _, err := st.CommitComic(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := NewApp()
+	a.store = st
+
+	cases := map[string]int{
+		"alpha":   1, // Title value
+		"space":   1, // Title value substring
+		"zeta":    1, // filename (title fallback strips ext, filename still matches)
+		"tanaka":  1, // metadata value
+		"nope":    0,
+		"":        3, // empty search = all
+	}
+	for q, want := range cases {
+		if got := a.CountMatching(q, ""); got != want {
+			t.Errorf("CountMatching(%q) = %d, want %d", q, got, want)
+		}
+	}
+	// GetComics honors search too
+	cards, err := a.GetComics(model.PageQuery{Limit: 10, Search: "tanaka"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 1 || cards[0].Filename != "t.cbz" {
+		t.Errorf("search results = %+v", cards)
+	}
+}
+
 func TestPurgeRootOnlyAffectsTargetDir(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "app.db")
 	st, err := index.Open(dbPath)

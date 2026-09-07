@@ -4,6 +4,8 @@
     scanning,
     progress,
     comics = 0,
+    search = '',
+    onSearch,
     onAdd,
     onScan,
     onCancel,
@@ -15,6 +17,8 @@
     scanning: boolean
     progress: { done: number; total: number } | null
     comics?: number
+    search?: string
+    onSearch: (q: string) => void
     onAdd: () => void
     onScan: () => void
     onCancel: () => void
@@ -34,6 +38,13 @@
 
 <div class="topbar">
   <div class="brand">📚 ComicGo</div>
+  <input
+    class="search"
+    type="search"
+    placeholder="Search library…"
+    value={search}
+    oninput={(e) => onSearch((e.target as HTMLInputElement).value)}
+  />
   <div class="roots" title={roots.join('\n')}>
     {#if roots.length === 0}
       <span class="dim">No library selected</span>
@@ -77,6 +88,10 @@
     border-bottom: 1px solid var(--line);
   }
   .brand { font-weight: 700; font-size: 16px; white-space: nowrap; }
+  .search {
+    width: 210px;
+    flex: none;
+  }
   .roots {
     flex: 1;
     min-width: 0;

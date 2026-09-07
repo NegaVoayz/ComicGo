@@ -18,6 +18,10 @@ export function CountComics(arg1) {
   return window['go']['main']['App']['CountComics'](arg1);
 }
 
+export function CountMatching(arg1, arg2) {
+  return window['go']['main']['App']['CountMatching'](arg1, arg2);
+}
+
 export function GetAbout() {
   return window['go']['main']['App']['GetAbout']();
 }

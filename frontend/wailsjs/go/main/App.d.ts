@@ -10,6 +10,8 @@ export function CardData(arg1:string):Promise<Record<string, any>>;
 
 export function CountComics(arg1:string):Promise<number>;
 
+export function CountMatching(arg1:string,arg2:string):Promise<number>;
+
 export function GetAbout():Promise<model.About>;
 
 export function GetComicDetail(arg1:number):Promise<model.ComicDetail>;

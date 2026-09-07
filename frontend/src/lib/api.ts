@@ -7,6 +7,7 @@ export interface PageQuery {
   limit: number
   filterRuleId: string
   sortRuleId: string
+  search: string
 }
 
 export interface ComicCard {
@@ -63,6 +64,7 @@ export interface ScanProgress {
 // -- backend wrappers --
 export const listComics = (q: PageQuery) => Go.GetComics(q)
 export const countComics = (filter: string) => Go.CountComics(filter)
+export const countMatching = (search: string, filter: string) => Go.CountMatching(search, filter)
 export const listRules = () => Go.ListRules()
 export const getSettings = () => Go.GetSettings()
 export const getLayout = () => Go.GetLayout()

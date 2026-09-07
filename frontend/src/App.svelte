@@ -45,6 +45,7 @@
   let reader: ComicRef | null = $state(null)
   let showAbout = $state(false)
   let about: About | null = $state(null)
+  let searchText = $state('')
   let winH = $state(0) // tracks window height so the grid can fill it (no dead space below)
 
   function bump() {
@@ -186,6 +187,8 @@
     {scanning}
     progress={scanProgress}
     comics={indexed}
+    search={searchText}
+    onSearch={(q) => (searchText = q)}
     onAdd={addFolder}
     onScan={doScan}
     onCancel={doCancel}
@@ -206,6 +209,7 @@
             sortRules={sortRules}
             refreshKey={refreshKey}
             scanning={scanning}
+            searchText={searchText}
             gridHeight={winH > 0 ? Math.max(300, winH - 123) : 600}
             onOpen={openReader}
             onChanged={bump}
