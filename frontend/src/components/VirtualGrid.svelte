@@ -2,7 +2,6 @@
   // A windowed, virtualized grid. Only cells near the viewport exist in the
   // DOM. Loading is driven imperatively (mount + scroll), NOT by $effect —
   // a reactive effect loop here froze the whole app (effect_update_depth_exceeded).
-  import { onMount } from 'svelte'
   import ComicCard from './ComicCard.svelte'
   import type { ComicCard as Card } from '../lib/api'
 
@@ -35,11 +34,13 @@
 
   const loaded = new Map<number, Card>()
   const pending = new Set<number>()
-  let ro: ResizeObserver | null = null
   let raf = 0
 
   const ROWS_PER_CHUNK = 6
   const CAPTION_H = 44
+  // Extra rows rendered & fetched beyond the visible window so chunk edges
+  // (every ROWS_PER_CHUNK rows) are prefetched before the user scrolls there.
+  const OVERSCAN = 3
 
   function geometry() {
     const c = width > 0 ? Math.max(2, Math.floor((width - pad + gap) / (minCard + gap))) : 1
@@ -53,8 +54,10 @@
   const cardH = $derived(Math.floor(cardW * (4 / 3)))
   const rowH = $derived(geometry().rowH)
   const totalRows = $derived(total > 0 ? Math.ceil(total / cols) : 0)
-  const rowTop = $derived(Math.max(0, Math.floor(scrollTop / rowH) - 1))
-  const rowBottom = $derived(totalRows > 0 ? Math.min(totalRows - 1, Math.ceil((scrollTop + height) / rowH)) : -1)
+  const rowTop = $derived(Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN))
+  const rowBottom = $derived(
+    totalRows > 0 ? Math.min(totalRows - 1, Math.ceil((scrollTop + height) / rowH) + OVERSCAN) : -1
+  )
 
   function viewportH() {
     return (outer && outer.clientHeight > 0 ? outer.clientHeight : height) || height
@@ -67,8 +70,8 @@
     const rH = geometry().rowH
     const tr = Math.ceil(total / c)
     const st = outer.scrollTop
-    const top = Math.max(0, Math.floor(st / rH) - 1)
-    const bot = tr > 0 ? Math.min(tr - 1, Math.ceil((st + viewportH()) / rH)) : -1
+    const top = Math.max(0, Math.floor(st / rH) - OVERSCAN)
+    const bot = tr > 0 ? Math.min(tr - 1, Math.ceil((st + viewportH()) / rH) + OVERSCAN) : -1
     if (bot < top) return
     const pageSize = Math.max(1, ROWS_PER_CHUNK * c)
     const begin = top * c
@@ -89,11 +92,14 @@
           cards.forEach((card, i) => loaded.set(p + i, card))
         })
         .catch(() => {
-          /* transient; next scroll retries */
+          /* transient; next pass retries */
         })
         .finally(() => {
           pending.delete(p)
           tick++
+          // a chunk just landed: re-run so the next contiguous chunk fills
+          // immediately instead of waiting for another scroll event
+          if (!raf) raf = requestAnimationFrame(loadVisible)
         })
     }
   }
@@ -103,19 +109,23 @@
     raf = requestAnimationFrame(loadVisible)
   }
 
-  onMount(() => {
+  // Runs when `outer` is (first) bound — which may be after onMount — so the
+  // first page always loads even on initial paint. Depends only on `outer`,
+  // so it cannot loop.
+  $effect(() => {
     const el = outer
-    if (el) {
-      if (el.clientWidth > 0) width = el.clientWidth
-      ro = new ResizeObserver(() => {
-        if (el.clientWidth > 0) width = el.clientWidth
+    if (!el) return
+    if (el.clientWidth > 0) width = el.clientWidth
+    const obs = new ResizeObserver(() => {
+      if (el.clientWidth > 0) {
+        width = el.clientWidth
         scheduleLoad()
-      })
-      ro.observe(el)
-      scheduleLoad()
-    }
+      }
+    })
+    obs.observe(el)
+    scheduleLoad()
     return () => {
-      if (ro) ro.disconnect()
+      obs.disconnect()
       cancelAnimationFrame(raf)
     }
   })
