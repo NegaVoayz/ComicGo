@@ -1,7 +1,7 @@
 <script lang="ts">
   // A windowed, virtualized grid. Only cells near the viewport exist in the
-  // DOM. Loading is driven imperatively (mount + scroll), NOT by $effect —
-  // a reactive effect loop here froze the whole app (effect_update_depth_exceeded).
+  // DOM. Loaded cards live in a reactive $state array that the template reads,
+  // so newly fetched cards re-render immediately (no scroll/refresh needed).
   import ComicCard from './ComicCard.svelte'
   import type { ComicCard as Card } from '../lib/api'
 
@@ -30,9 +30,10 @@
   let outer: HTMLElement | undefined = $state()
   let scrollTop = $state(0)
   let width = $state(900)
-  let tick = $state(0)
+  // items[i] is the card at flat index i, or undefined while not yet fetched.
+  // Reassigning it (slice) after a batch is what triggers the re-render.
+  let items = $state<Array<Card | undefined>>(new Array(total))
 
-  const loaded = new Map<number, Card>()
   const pending = new Set<number>()
   let raf = 0
 
@@ -63,9 +64,16 @@
     return (outer && outer.clientHeight > 0 ? outer.clientHeight : height) || height
   }
 
+  function ensureSize() {
+    if (items.length !== total) {
+      items = new Array(total)
+    }
+  }
+
   function loadVisible() {
     raf = 0
     if (!outer || total <= 0) return
+    ensureSize()
     const { cols: c } = geometry()
     const rH = geometry().rowH
     const tr = Math.ceil(total / c)
@@ -80,7 +88,7 @@
       if (pending.has(p)) continue
       let haveAll = true
       for (let i = p; i < Math.min(total, p + pageSize); i++) {
-        if (!loaded.has(i)) {
+        if (items[i] === undefined) {
           haveAll = false
           break
         }
@@ -89,16 +97,19 @@
       pending.add(p)
       load(p, pageSize)
         .then((cards) => {
-          cards.forEach((card, i) => loaded.set(p + i, card))
+          cards.forEach((card, i) => {
+            if (p + i < total) items[p + i] = card
+          })
         })
         .catch(() => {
           /* transient; next pass retries */
         })
         .finally(() => {
           pending.delete(p)
-          tick++
-          // a chunk just landed: re-run so the next contiguous chunk fills
-          // immediately instead of waiting for another scroll event
+          // publish the batch: a fresh array reference triggers the re-render
+          // so newly loaded covers appear immediately (no scroll needed)
+          items = items.slice()
+          // prefetch the next contiguous chunk without waiting for a scroll
           if (!raf) raf = requestAnimationFrame(loadVisible)
         })
     }
@@ -110,8 +121,7 @@
   }
 
   // Runs when `outer` is (first) bound — which may be after onMount — so the
-  // first page always loads even on initial paint. Depends only on `outer`,
-  // so it cannot loop.
+  // first page always loads on initial paint. Depends only on `outer`.
   $effect(() => {
     const el = outer
     if (!el) return
@@ -147,7 +157,7 @@
           {#each Array.from({ length: cols }) as _, col}
             {@const idx = row * cols + col}
             {#if idx < total}
-              {@const card = loaded.get(idx)}
+              {@const card = items[idx]}
               <div
                 class="cell"
                 style="left:{col * (cardW + gap) + pad}px; top:{row * rowH + pad}px; width:{cardW}px;"
