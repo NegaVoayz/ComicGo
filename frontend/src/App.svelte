@@ -49,6 +49,11 @@
     } catch {
       /* backend not ready */
     }
+    // A restart with saved roots should repopulate the shelf even if nothing
+    // was scanned in this run yet (incremental: unchanged archives are skipped).
+    if ((settings?.libraryRoots ?? []).length > 0) {
+      startScan().catch(() => {})
+    }
   }
 
   onMount(() => {

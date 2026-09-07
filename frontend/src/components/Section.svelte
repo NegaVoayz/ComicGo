@@ -25,7 +25,11 @@
 
   let total = $state(0)
 
+  // Refetch the count whenever the filter or the global refresh key changes
+  // (scan finished, favorite toggled, reader closed, ...). Otherwise a section
+  // that mounts mid-scan sticks at 0 ("Nothing here yet") forever.
   $effect(() => {
+    void refreshKey
     countComics(section.filterRuleId || '')
       .then((n) => (total = n))
       .catch(() => (total = 0))

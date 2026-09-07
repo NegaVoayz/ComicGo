@@ -204,7 +204,7 @@ func runE2E(t *testing.T, lib string) {
 
 	for i := range rows {
 		r := &rows[i]
-		t.Logf("  %-14s pages=%-2d title=%q commentKVs=%d", r.Filename, r.PageCount, firstTitle(r), len(r.KV))
+		t.Logf("  %-14s pages=%-3d nonUTF8=%-5v title=%q commentKVs=%d", r.Filename, r.PageCount, r.HasNonUTF8, firstTitle(r), len(r.KV))
 
 		// natural order sanity: first two entries sorted, not central-dir order
 		if r.PageCount < 1 {
