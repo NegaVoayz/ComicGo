@@ -203,7 +203,7 @@
     overflow-x: hidden;
     position: relative;
     /* keep the top corners rounded but square the bottom so the bottom border
-       spans the full width like the left/right borders do */
+       spans the full width; give the bottom edge a bit more weight */
     border-radius: var(--radius) var(--radius) 0 0;
     background: var(--bg);
     border: 1px solid var(--line);

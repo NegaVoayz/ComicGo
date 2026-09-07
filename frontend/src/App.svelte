@@ -206,7 +206,7 @@
             sortRules={sortRules}
             refreshKey={refreshKey}
             scanning={scanning}
-            gridHeight={winH > 0 ? Math.max(300, winH - 110) : 600}
+            gridHeight={winH > 0 ? Math.max(300, winH - 123) : 600}
             onOpen={openReader}
             onChanged={bump}
           />
