@@ -75,7 +75,10 @@
 
 <section class="section">
   <div class="head">
-    <h2>{section.title}</h2>
+    <div class="left">
+      <h2>{section.title}</h2>
+      <span class="count">{total}</span>
+    </div>
     <input
       class="search"
       type="search"
@@ -83,7 +86,6 @@
       value={searchText}
       oninput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
     />
-    <span class="count">{total}</span>
     <div class="tools">
       <select value={section.filterRuleId || ''} onchange={chooseFilter} title="Filter">
         <option value="">All</option>
@@ -126,7 +128,14 @@
   .head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 18px; /* equal spacing between the left, middle and right blocks */
+  }
+  .left {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    white-space: nowrap;
+    flex: none;
   }
   h2 {
     margin: 0;
@@ -137,13 +146,14 @@
     color: var(--text-dim);
     font-size: 12px;
   }
+  .search {
+    flex: 1 1 auto; /* stretch as wide as possible between left and right */
+    min-width: 140px;
+  }
   .tools {
-    margin-left: auto;
     display: flex;
     gap: 6px;
-  }
-  .search {
-    width: 230px;
+    white-space: nowrap;
     flex: none;
   }
   .hint {
