@@ -100,6 +100,14 @@ type Progress struct {
 	PageCount int   `json:"pageCount"`
 }
 
+// About is shown by the app's About dialog.
+type About struct {
+	Version        string `json:"version"`
+	ConfigDir      string `json:"configDir"`
+	MediaTransport string `json:"mediaTransport"`
+	ComicCount     int    `json:"comicCount"`
+}
+
 // Settings is persisted in settings.json.
 type Settings struct {
 	LibraryRoots   []string `json:"libraryRoots"`

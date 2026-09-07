@@ -2,23 +2,25 @@
   import { onMount } from 'svelte'
   import {
     countComics,
+    getAbout,
     getLayout,
     getSettings,
     listRules,
     on,
     pickLibrary,
     reloadLayout,
+    removeLibrary,
     startScan,
     cancelScan,
   } from './lib/api'
-  import type { ComicCard, LayoutDoc, RuleInfo, Settings } from './lib/api'
+  import type { About, ComicCard, LayoutDoc, RuleInfo, Settings } from './lib/api'
   import TopBar from './components/TopBar.svelte'
   import Welcome from './components/Welcome.svelte'
   import Section from './components/Section.svelte'
   import CardSlot from './components/CardSlot.svelte'
   import Reader from './components/Reader.svelte'
   import Toasts from './components/Toasts.svelte'
-  import { error } from './lib/toast'
+  import { error, ok } from './lib/toast'
   import * as Go from '../wailsjs/go/main/App'
 
   const logFront = (m: string) => {
@@ -41,6 +43,8 @@
   let refreshKey = $state(0)
   let indexed = $state(0)
   let reader: ComicRef | null = $state(null)
+  let showAbout = $state(false)
+  let about: About | null = $state(null)
 
   function bump() {
     refreshKey += 1
@@ -134,6 +138,29 @@
       error(e?.message ?? 'Could not reload layout.json')
     }
   }
+
+  async function openAbout() {
+    try {
+      about = await getAbout()
+      showAbout = true
+    } catch (e: any) {
+      error(e?.message ?? 'Could not load About info')
+    }
+  }
+  function closeAbout() {
+    showAbout = false
+  }
+  async function removeRoot(dir: string) {
+    const yes = window.confirm(`Remove "${dir}" from your library?\n\nThe files will not be deleted.`)
+    if (!yes) return
+    try {
+      settings = await removeLibrary(dir)
+      bump()
+      ok('Folder removed — its comics were unindexed')
+    } catch (e: any) {
+      error(e?.message ?? 'Could not remove folder')
+    }
+  }
   function openReader(card: ComicCard) {
     const count = Math.max(card.pageCount, 0)
     const resume = card.lastPage < count ? card.lastPage : Math.max(0, count - 1)
@@ -156,6 +183,8 @@
     onAdd={addFolder}
     onScan={doScan}
     onCancel={doCancel}
+    onRemoveRoot={removeRoot}
+    onAbout={openAbout}
     onReloadLayout={doReloadLayout}
   />
 
@@ -184,6 +213,24 @@
     </main>
   {/if}
 {/if}
+
+{#if showAbout && about}
+  <div class="backdrop" onclick={closeAbout}>
+    <div class="modal" onclick={(e) => e.stopPropagation()}>
+      <h3>📚 ComicGo</h3>
+      <p class="ver">Version {about.version}</p>
+      <dl>
+        <div class="row"><dt>Comics indexed</dt><dd>{about.comicCount}</dd></div>
+        <div class="row"><dt>Media transport</dt><dd>{about.mediaTransport}</dd></div>
+        <div class="row"><dt>Data folder</dt><dd class="mono">{about.configDir}</dd></div>
+      </dl>
+      <div class="actions">
+        <button onclick={closeAbout}>Close</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <Toasts />
 
 <style>
@@ -198,4 +245,29 @@
     font-size: 15px;
     font-weight: 600;
   }
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px 24px;
+    width: 420px;
+    max-width: 90vw;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+  .modal h3 { margin: 0 0 2px; }
+  .ver { color: var(--text-dim); margin: 0 0 12px; font-size: 12px; }
+  .modal dl { margin: 0 0 16px; display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; gap: 10px; font-size: 13px; }
+  .row dt { color: var(--text-dim); width: 130px; flex: none; }
+  .row dd { margin: 0; }
+  .mono { font-family: Consolas, monospace; font-size: 12px; word-break: break-all; }
 </style>

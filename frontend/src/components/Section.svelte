@@ -90,7 +90,9 @@
   {#if scanning && total === 0}
     <div class="hint">Scanning your library…</div>
   {:else}
-    {#key `${total}:${refreshKey}`}
+    {#key `${total}|${section.filterRuleId || ''}|${section.sortRuleId || ''}`}
+      <!-- remount only when this section's dataset really changes; favorite
+           toggles and progress updates must NOT reload every cover -->
       <VirtualGrid
         total={total}
         {load}

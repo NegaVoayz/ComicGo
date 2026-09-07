@@ -21,9 +21,13 @@ import (
 	"comicgo/internal/plugins"
 	"comicgo/internal/scan"
 	"comicgo/internal/serve"
+	"comicgo/internal/watch"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// Version is the human-facing app version.
+const Version = "0.2.0"
 
 // App is the single object bound to the frontend.
 type App struct {
@@ -41,6 +45,7 @@ type App struct {
 	metasDirty bool
 
 	scanCancel context.CancelFunc
+	watcher    *watch.Watcher
 
 	pageCache *cache.LRU
 }
@@ -112,10 +117,33 @@ func (a *App) startup(ctx context.Context) {
 		runtime.LogErrorf(ctx, "load layout: %v", err)
 	}
 	a.layout = doc
+	a.syncWatcher()
+}
+
+// syncWatcher restarts the folder watcher for the current library roots.
+func (a *App) syncWatcher() {
+	if a.watcher != nil {
+		a.watcher.Stop()
+		a.watcher = nil
+	}
+	roots := append([]string(nil), a.settings.LibraryRoots...)
+	if len(roots) == 0 {
+		return
+	}
+	w, err := watch.New(roots, func() { a.startScan() })
+	if err != nil {
+		a.dbg("watcher start error: %v", err)
+		return
+	}
+	a.watcher = w
+	a.dbg("watcher started on %d root(s)", len(roots))
 }
 
 // shutdown closes resources when the app exits.
 func (a *App) shutdown(ctx context.Context) {
+	if a.watcher != nil {
+		a.watcher.Stop()
+	}
 	if a.media != nil {
 		a.media.Close()
 	}
@@ -148,6 +176,7 @@ func (a *App) AddLibrary(dir string) error {
 		return err
 	}
 	a.startScan()
+	a.syncWatcher()
 	return nil
 }
 
@@ -168,7 +197,8 @@ func (a *App) PickLibrary() (model.Settings, error) {
 	return a.settings, a.AddLibrary(dir)
 }
 
-// RemoveLibrary removes a root without deleting files.
+// RemoveLibrary removes a root without deleting files. Indexed comics under
+// that folder are purged so they stop appearing on the shelf.
 func (a *App) RemoveLibrary(dir string) error {
 	var kept []string
 	for _, r := range a.settings.LibraryRoots {
@@ -180,8 +210,41 @@ func (a *App) RemoveLibrary(dir string) error {
 	if err := config.SaveSettings(a.settings); err != nil {
 		return err
 	}
+	a.purgeRoot(dir)
 	a.startScan()
+	a.syncWatcher()
 	return nil
+}
+
+// purgeRoot deletes indexed rows (and thumbnails) for archives under dir.
+func (a *App) purgeRoot(dir string) {
+	paths, err := a.store.ListPaths()
+	if err != nil {
+		a.dbg("purgeRoot list error: %v", err)
+		return
+	}
+	for _, p := range paths {
+		if !index.IsWithin(dir, p) {
+			continue
+		}
+		if id, ok, _ := a.store.IDFromPath(p); ok {
+			a.thumbs.Remove(id)
+		}
+		if err := a.store.DeleteByPath(p); err != nil {
+			a.dbg("purgeRoot delete %s: %v", p, err)
+		}
+	}
+	a.invalidate()
+}
+
+// GetAbout returns info for the About dialog.
+func (a *App) GetAbout() model.About {
+	ab := model.About{Version: Version, MediaTransport: a.settings.MediaTransport}
+	if a.paths != nil {
+		ab.ConfigDir = a.paths.Root
+	}
+	ab.ComicCount = len(a.currentMetas())
+	return ab
 }
 
 // StartScan begins an incremental scan of all library roots.
@@ -239,6 +302,9 @@ func (a *App) startScan() {
 		a.scanCancel = nil
 		a.mu.Unlock()
 		a.invalidate()
+		if a.watcher != nil {
+			a.watcher.Sync() // pick up newly created subfolders
+		}
 		a.dbg("scan finished err=%v", err)
 
 		if err != nil {

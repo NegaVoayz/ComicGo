@@ -1,5 +1,23 @@
 export namespace model {
 	
+	export class About {
+	    version: string;
+	    configDir: string;
+	    mediaTransport: string;
+	    comicCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new About(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.configDir = source["configDir"];
+	        this.mediaTransport = source["mediaTransport"];
+	        this.comicCount = source["comicCount"];
+	    }
+	}
 	export class ComicCard {
 	    id: number;
 	    filename: string;

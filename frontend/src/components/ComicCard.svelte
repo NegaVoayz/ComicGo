@@ -33,6 +33,10 @@
     event.stopPropagation()
     try {
       fav = await toggleFavorite(card.id)
+      // The grid no longer remounts on a favorite toggle (no cover flash), so
+      // persist the new state onto the shared card object: a later re-render
+      // (scroll) reads card.fav and must show the same heart.
+      card.fav = fav
       onChanged?.()
     } catch {
       /* ignore */

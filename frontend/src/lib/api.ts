@@ -47,6 +47,13 @@ export interface Settings {
   schemaVersion: number
 }
 
+export interface About {
+  version: string
+  configDir: string
+  mediaTransport: string
+  comicCount: number
+}
+
 export interface ScanProgress {
   done: number
   total: number
@@ -70,7 +77,9 @@ export const getProgress = (id: number) => Go.GetProgress(id)
 export const setProgress = (id: number, page: number, pageCount: number) => Go.SetProgress(id, page, pageCount)
 export const toggleFavorite = (id: number) => Go.ToggleFavorite(id)
 export const addLibrary = (dir: string) => Go.AddLibrary(dir)
+export const removeLibrary = (dir: string) => Go.RemoveLibrary(dir)
 export const pickLibrary = () => Go.PickLibrary()
+export const getAbout = () => Go.GetAbout()
 export const startScan = () => Go.StartScan()
 export const cancelScan = () => Go.CancelScan()
 export const isScanning = () => Go.IsScanning()

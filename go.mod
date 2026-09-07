@@ -3,6 +3,7 @@ module comicgo
 go 1.25.0
 
 require (
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/wailsapp/wails/v2 v2.15.0
 	golang.org/x/image v0.45.0
 	modernc.org/sqlite v1.58.0
