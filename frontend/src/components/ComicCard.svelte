@@ -58,7 +58,15 @@
 <div class="card" role="button" tabindex="0" onclick={open} onkeydown={(e) => (e.key === 'Enter' ? open() : null)}>
   <div class="thumb">
     {#if src && !failed}
-      <img src={src} alt={card.title} class:loaded onload={() => (loaded = true)} onerror={() => (failed = true)} />
+      <img
+        src={src}
+        alt={card.title}
+        loading="lazy"
+        decoding="async"
+        class:loaded
+        onload={() => (loaded = true)}
+        onerror={() => (failed = true)}
+      />
       {#if !loaded}<div class="skel"></div>{/if}
     {:else}
       <div class="ph">{initials || '?'}</div>

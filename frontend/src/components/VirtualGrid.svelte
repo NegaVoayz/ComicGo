@@ -30,6 +30,10 @@
   let outer: HTMLElement | undefined = $state()
   let scrollTop = $state(0)
   let width = $state(900)
+  // scrollDir: +1 = scrolling down, -1 = up, 0 = initial/neutral. Load order
+  // follows it so covers appear top-to-bottom when going down and reverse when up.
+  let scrollDir = $state(0)
+  let lastScroll = 0
   // items[i] is the card at flat index i, or undefined while not yet fetched.
   // Reassigning it (slice) after a batch is what triggers the re-render.
   let items = $state<Array<Card | undefined>>(new Array(total))
@@ -39,9 +43,12 @@
 
   const ROWS_PER_CHUNK = 6
   const CAPTION_H = 44
-  // Extra rows rendered & fetched beyond the visible window so chunk edges
-  // (every ROWS_PER_CHUNK rows) are prefetched before the user scrolls there.
-  const OVERSCAN = 3
+  // Rows actually kept in the DOM around the viewport (small -> far cells are
+  // removed and their pending cover loads aborted on a sudden jump).
+  const RENDER_PAD = 1
+  // Rows prefetched as data beyond the viewport (covers still stay lazy, so
+  // only data — not decodes — run this far ahead).
+  const FETCH_PAD = 3
 
   function geometry() {
     const c = width > 0 ? Math.max(2, Math.floor((width - pad + gap) / (minCard + gap))) : 1
@@ -55,9 +62,9 @@
   const cardH = $derived(Math.floor(cardW * (4 / 3)))
   const rowH = $derived(geometry().rowH)
   const totalRows = $derived(total > 0 ? Math.ceil(total / cols) : 0)
-  const rowTop = $derived(Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN))
+  const rowTop = $derived(Math.max(0, Math.floor(scrollTop / rowH) - RENDER_PAD))
   const rowBottom = $derived(
-    totalRows > 0 ? Math.min(totalRows - 1, Math.ceil((scrollTop + height) / rowH) + OVERSCAN) : -1
+    totalRows > 0 ? Math.min(totalRows - 1, Math.ceil((scrollTop + height) / rowH) + RENDER_PAD) : -1
   )
 
   function viewportH() {
@@ -78,13 +85,19 @@
     const rH = geometry().rowH
     const tr = Math.ceil(total / c)
     const st = outer.scrollTop
-    const top = Math.max(0, Math.floor(st / rH) - OVERSCAN)
-    const bot = tr > 0 ? Math.min(tr - 1, Math.ceil((st + viewportH()) / rH) + OVERSCAN) : -1
+    const top = Math.max(0, Math.floor(st / rH) - FETCH_PAD)
+    const bot = tr > 0 ? Math.min(tr - 1, Math.ceil((st + viewportH()) / rH) + FETCH_PAD) : -1
     if (bot < top) return
     const pageSize = Math.max(1, ROWS_PER_CHUNK * c)
     const begin = top * c
     const end = Math.min(total - 1, (bot + 1) * c - 1)
-    for (let p = Math.floor(begin / pageSize) * pageSize; p <= end; p += pageSize) {
+    // Candidate chunks that cover the preload window, ordered by priority:
+    // when scrolling down fetch top->bottom; when scrolling up fetch bottom->top
+    // so the rows the user is moving TOWARD resolve first.
+    const pages: number[] = []
+    for (let p = Math.floor(begin / pageSize) * pageSize; p <= end; p += pageSize) pages.push(p)
+    if (scrollDir < 0) pages.reverse()
+    for (const p of pages) {
       if (pending.has(p)) continue
       let haveAll = true
       for (let i = p; i < Math.min(total, p + pageSize); i++) {
@@ -142,7 +155,10 @@
 
   function onScroll() {
     if (!outer) return
-    scrollTop = outer.scrollTop
+    const now = outer.scrollTop
+    scrollDir = now > lastScroll ? 1 : now < lastScroll ? -1 : scrollDir
+    lastScroll = now
+    scrollTop = now
     scheduleLoad()
   }
 </script>
