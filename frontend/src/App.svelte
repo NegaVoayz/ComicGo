@@ -45,6 +45,7 @@
   let reader: ComicRef | null = $state(null)
   let showAbout = $state(false)
   let about: About | null = $state(null)
+  let winH = $state(0) // tracks window height so the grid can fill it (no dead space below)
 
   function bump() {
     refreshKey += 1
@@ -104,6 +105,9 @@
       logFront('unhandledrejection: ' + (e?.reason?.message ?? String(e?.reason ?? '')))
     window.addEventListener('error', onErr)
     window.addEventListener('unhandledrejection', onRej)
+    const onResize = () => (winH = window.innerHeight)
+    onResize()
+    window.addEventListener('resize', onResize)
     return () => {
       un1()
       un2()
@@ -112,6 +116,7 @@
       un5()
       window.removeEventListener('error', onErr)
       window.removeEventListener('unhandledrejection', onRej)
+      window.removeEventListener('resize', onResize)
     }
   })
 
@@ -201,6 +206,7 @@
             sortRules={sortRules}
             refreshKey={refreshKey}
             scanning={scanning}
+            gridHeight={winH > 0 ? Math.max(320, winH - 150) : 600}
             onOpen={openReader}
             onChanged={bump}
           />
