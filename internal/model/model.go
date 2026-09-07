@@ -3,7 +3,10 @@
 // any other internal package so it can be a shared leaf dependency.
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Meta is the stable, read-only view of a single comic that plugin rules
 // (filter/sort) see. Plugins never touch the database directly.
@@ -27,12 +30,25 @@ type Meta struct {
 func (m Meta) Val(key string) string { return m.KV[key] }
 
 // Title is the preferred display name: the "Title" comment key when present,
-// otherwise the zip filename.
+// otherwise the zip filename without its archive extension.
 func (m Meta) Title() string {
 	if t := m.KV["Title"]; t != "" {
 		return t
 	}
-	return m.Filename
+	return StripArchiveExt(m.Filename)
+}
+
+// StripArchiveExt removes the final ".zip"/".cbz"-style extension (and any
+// directory prefix) from an archive file name, for display.
+func StripArchiveExt(name string) string {
+	base := name
+	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+		base = base[i+1:]
+	}
+	if i := strings.LastIndexByte(base, '.'); i > 0 {
+		return base[:i]
+	}
+	return base
 }
 
 // ComicCard is a lightweight shelf row (no image bytes, no meta blob).

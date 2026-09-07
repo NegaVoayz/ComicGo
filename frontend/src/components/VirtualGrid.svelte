@@ -66,6 +66,11 @@
   const rowBottom = $derived(
     totalRows > 0 ? Math.min(totalRows - 1, Math.ceil((scrollTop + height) / rowH) + RENDER_PAD) : -1
   )
+  // Content height without a trailing inter-row gap under the last row.
+  const innerH = $derived(totalRows > 0 ? Math.max(rowH, totalRows * rowH - gap) + pad : height)
+  // The window hugs its content when the library is short (no dead blank area)
+  // but still scrolls (and never exceeds `height`) for large libraries.
+  const vgH = $derived(totalRows > 0 ? Math.min(height, innerH) : height)
 
   function viewportH() {
     return (outer && outer.clientHeight > 0 ? outer.clientHeight : height) || height
@@ -163,11 +168,11 @@
   }
 </script>
 
-<div class="vg" bind:this={outer} style="height:{height}px" onscroll={onScroll}>
+<div class="vg" bind:this={outer} style="height:{vgH}px" onscroll={onScroll}>
   {#if total === 0}
     <div class="empty">Nothing here yet</div>
   {:else}
-    <div class="inner" style="height:{totalRows * rowH + pad}px">
+    <div class="inner" style="height:{innerH}px">
       {#if rowBottom >= rowTop}
         {#each Array.from({ length: rowBottom - rowTop + 1 }, (_, k) => rowTop + k) as row (row)}
           {#each Array.from({ length: cols }) as _, col}
