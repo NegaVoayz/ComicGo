@@ -16,6 +16,7 @@ export interface ComicCard {
   pageCount: number
   fav: boolean
   lastPage: number
+  hasNonUtf8: boolean
   coverUrl: string
 }
 

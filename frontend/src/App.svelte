@@ -16,6 +16,8 @@
   import Section from './components/Section.svelte'
   import CardSlot from './components/CardSlot.svelte'
   import Reader from './components/Reader.svelte'
+  import Toasts from './components/Toasts.svelte'
+  import { error } from './lib/toast'
 
   interface ComicRef {
     id: number
@@ -64,31 +66,39 @@
     const un4 = on('layout:changed', () => {
       getLayout().then((l) => (layout = l)).catch(() => {})
     })
+    const un5 = on('scan:error', (e: any) => {
+      error(e?.path ? `Scan: ${e.path}: ${e.error}` : `Scan error: ${e?.error ?? ''}`)
+    })
     return () => {
       un1()
       un2()
       un3()
       un4()
+      un5()
     }
   })
 
   async function addFolder() {
     try {
       const s = await pickLibrary()
-      settings = s
+      if (s) settings = s
       bump()
-    } catch {
-      /* cancelled */
+    } catch (e: any) {
+      error(e?.message ?? 'Could not add folder')
     }
   }
   function doScan() {
-    startScan().catch(() => {})
+    startScan().catch((e: any) => error(e?.message ?? 'Could not start scan'))
   }
   function doCancel() {
     cancelScan()
   }
   async function doReloadLayout() {
-    await reloadLayout()
+    try {
+      await reloadLayout()
+    } catch (e: any) {
+      error(e?.message ?? 'Could not reload layout.json')
+    }
   }
   function openReader(card: ComicCard) {
     const count = Math.max(card.pageCount, 0)
@@ -138,6 +148,7 @@
     </main>
   {/if}
 {/if}
+<Toasts />
 
 <style>
   .shelf {

@@ -278,7 +278,8 @@ func (a *App) GetComics(q model.PageQuery) ([]model.ComicCard, error) {
 		cards = append(cards, model.ComicCard{
 			ID: m.ID, Filename: m.Filename, Title: m.Title(),
 			PageCount: m.PageCount, Fav: m.Fav, LastPage: m.LastReadPage,
-			CoverURL: a.shelfCoverURL(m.ID),
+			HasNonUTF8: m.HasNonUTF8,
+			CoverURL:   a.shelfCoverURL(m.ID),
 		})
 	}
 	return cards, nil

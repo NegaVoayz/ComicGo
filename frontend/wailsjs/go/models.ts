@@ -7,6 +7,7 @@ export namespace model {
 	    pageCount: number;
 	    fav: boolean;
 	    lastPage: number;
+	    hasNonUtf8: boolean;
 	    coverUrl: string;
 	
 	    static createFrom(source: any = {}) {
@@ -21,6 +22,7 @@ export namespace model {
 	        this.pageCount = source["pageCount"];
 	        this.fav = source["fav"];
 	        this.lastPage = source["lastPage"];
+	        this.hasNonUtf8 = source["hasNonUtf8"];
 	        this.coverUrl = source["coverUrl"];
 	    }
 	}

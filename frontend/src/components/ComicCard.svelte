@@ -59,6 +59,9 @@
     {:else}
       <div class="ph">{initials || '?'}</div>
     {/if}
+    {#if card.hasNonUtf8}
+      <span class="warn" title="Some file names or the comment are not valid UTF-8">⚠</span>
+    {/if}
     {#if card.lastPage > 0 && card.pageCount > 0}
       <span class="prog">{Math.min(100, Math.round(((card.lastPage + 1) / card.pageCount) * 100))}%</span>
     {/if}
@@ -122,6 +125,20 @@
     font-size: 11px;
     padding: 1px 6px;
     border-radius: 4px;
+  }
+  .warn {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 50%;
+    font-size: 12px;
+    cursor: help;
   }
   .meta {
     position: relative;

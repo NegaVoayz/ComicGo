@@ -37,13 +37,14 @@ func (m Meta) Title() string {
 
 // ComicCard is a lightweight shelf row (no image bytes, no meta blob).
 type ComicCard struct {
-	ID        int64  `json:"id"`
-	Filename  string `json:"filename"`
-	Title     string `json:"title"`
-	PageCount int    `json:"pageCount"`
-	Fav       bool   `json:"fav"`
-	LastPage  int    `json:"lastPage"`
-	CoverURL  string `json:"coverUrl"` // filled by the transport layer
+	ID         int64  `json:"id"`
+	Filename   string `json:"filename"`
+	Title      string `json:"title"`
+	PageCount  int    `json:"pageCount"`
+	Fav        bool   `json:"fav"`
+	LastPage   int    `json:"lastPage"`
+	HasNonUTF8 bool   `json:"hasNonUtf8"`
+	CoverURL   string `json:"coverUrl"` // filled by the transport layer
 }
 
 // ComicDetail is the full view used by the info panel / open action.
