@@ -246,6 +246,12 @@
     min-height: 0;
     overflow-y: auto;
     padding-bottom: 4px;
+    /* The shelf only scrolls for extra sections; don't show a thin bar for a
+       few pixels of overflow — the grid window has its own real scrollbar. */
+    scrollbar-width: none;
+  }
+  .shelf::-webkit-scrollbar {
+    display: none;
   }
   .section {
     margin: 14px 18px;
