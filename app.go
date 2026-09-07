@@ -45,6 +45,7 @@ type App struct {
 	metasDirty bool
 
 	scanCancel context.CancelFunc
+	scanDone   chan struct{}
 	watcher    *watch.Watcher
 
 	pageCache *cache.LRU
@@ -198,7 +199,10 @@ func (a *App) PickLibrary() (model.Settings, error) {
 }
 
 // RemoveLibrary removes a root without deleting files. Indexed comics under
-// that folder are purged so they stop appearing on the shelf.
+// that folder are purged so they stop appearing on the shelf. It also stops
+// any scan currently adding rows from that folder (otherwise commits that land
+// after the purge would linger as orphans) and enforces the invariant that no
+// indexed comic lives outside the remaining roots.
 func (a *App) RemoveLibrary(dir string) error {
 	var kept []string
 	for _, r := range a.settings.LibraryRoots {
@@ -210,10 +214,47 @@ func (a *App) RemoveLibrary(dir string) error {
 	if err := config.SaveSettings(a.settings); err != nil {
 		return err
 	}
-	a.purgeRoot(dir)
-	a.startScan()
+	a.CancelScan()                  // stop the scan that may still be adding this dir's rows
+	a.waitScanDone(3 * time.Second) // ...and wait for it to actually exit
+	a.pruneStaleRoots()
+	if len(kept) > 0 {
+		a.startScan() // on completion its sweep removes any straggler commits
+	}
 	a.syncWatcher()
 	return nil
+}
+
+// pruneStaleRoots deletes any indexed comic that is not under a current
+// library root (rows whose folder was removed mid-scan, etc.).
+func (a *App) pruneStaleRoots() {
+	paths, err := a.store.ListPaths()
+	if err != nil {
+		a.dbg("pruneStale list error: %v", err)
+		return
+	}
+	removed := 0
+	for _, p := range paths {
+		keep := false
+		for _, r := range a.settings.LibraryRoots {
+			if index.IsWithin(r, p) {
+				keep = true
+				break
+			}
+		}
+		if keep {
+			continue
+		}
+		if id, ok, _ := a.store.IDFromPath(p); ok {
+			a.thumbs.Remove(id)
+		}
+		if err := a.store.DeleteByPath(p); err == nil {
+			removed++
+		}
+	}
+	if removed > 0 {
+		a.invalidate()
+		a.dbg("pruned %d stale comic(s) outside library roots", removed)
+	}
 }
 
 // purgeRoot deletes indexed rows (and thumbnails) for archives under dir.
@@ -265,6 +306,21 @@ func (a *App) CancelScan() {
 	}
 }
 
+// waitScanDone blocks until a running scan goroutine has fully exited (so no
+// late commits land after a removal), or until the timeout elapses.
+func (a *App) waitScanDone(timeout time.Duration) {
+	a.mu.Lock()
+	ch := a.scanDone
+	a.mu.Unlock()
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+	case <-time.After(timeout):
+	}
+}
+
 // IsScanning reports whether a scan is in progress.
 func (a *App) IsScanning() bool {
 	a.mu.Lock()
@@ -273,12 +329,14 @@ func (a *App) IsScanning() bool {
 }
 
 func (a *App) startScan() {
+	done := make(chan struct{})
 	a.mu.Lock()
 	if a.scanCancel != nil {
 		a.scanCancel()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.scanCancel = cancel
+	a.scanDone = done
 	a.mu.Unlock()
 
 	roots := append([]string(nil), a.settings.LibraryRoots...)
@@ -286,6 +344,7 @@ func (a *App) startScan() {
 	runtime.EventsEmit(a.ctx, "scan:started", struct{}{})
 
 	go func() {
+		defer close(done)
 		opts := scan.Options{
 			Store:  a.store,
 			Thumbs: a.thumbs,
@@ -302,6 +361,9 @@ func (a *App) startScan() {
 		a.scanCancel = nil
 		a.mu.Unlock()
 		a.invalidate()
+		// Enforce "no comic outside the current roots": removes any rows a
+		// cancelled scan committed after the user removed their folder.
+		a.pruneStaleRoots()
 		if a.watcher != nil {
 			a.watcher.Sync() // pick up newly created subfolders
 		}
