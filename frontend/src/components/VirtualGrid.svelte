@@ -204,6 +204,7 @@
     position: relative;
     border-radius: var(--radius);
     background: var(--bg);
+    border: 1px solid var(--line);
   }
   .inner {
     position: relative;
