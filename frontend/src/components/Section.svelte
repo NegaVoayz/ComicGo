@@ -19,6 +19,7 @@
     searchText = '',
     gridHeight = 600,
     onOpen,
+    onSearchChange,
     onChanged,
   }: {
     section: LayoutSection
@@ -29,6 +30,7 @@
     searchText?: string
     gridHeight?: number
     onOpen: (c: ComicCard) => void
+    onSearchChange: (q: string) => void
     onChanged: () => void
   } = $props()
 
@@ -74,6 +76,13 @@
 <section class="section">
   <div class="head">
     <h2>{section.title}</h2>
+    <input
+      class="search"
+      type="search"
+      placeholder="Search this section…"
+      value={searchText}
+      oninput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
+    />
     <span class="count">{total}</span>
     <div class="tools">
       <select value={section.filterRuleId || ''} onchange={chooseFilter} title="Filter">
@@ -132,6 +141,10 @@
     margin-left: auto;
     display: flex;
     gap: 6px;
+  }
+  .search {
+    width: 230px;
+    flex: none;
   }
   .hint {
     padding: 40px 20px;

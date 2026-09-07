@@ -187,8 +187,6 @@
     {scanning}
     progress={scanProgress}
     comics={indexed}
-    search={searchText}
-    onSearch={(q) => (searchText = q)}
     onAdd={addFolder}
     onScan={doScan}
     onCancel={doCancel}
@@ -210,6 +208,7 @@
             refreshKey={refreshKey}
             scanning={scanning}
             searchText={searchText}
+            onSearchChange={(q) => (searchText = q)}
             gridHeight={winH > 0 ? Math.max(300, winH - 123) : 600}
             onOpen={openReader}
             onChanged={bump}
