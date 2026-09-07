@@ -7,9 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"comicgo/internal/cache"
@@ -28,6 +31,28 @@ import (
 
 // Version is the human-facing app version.
 const Version = "0.2.0"
+
+// thumbGen marks the current cover thumbnail format. Bump it (and let
+// ensureThumbGeneration clear the cache) whenever thumb dimensions change so
+// stale-size covers are regenerated on demand.
+const thumbGen = "2"
+
+// ensureThumbGeneration drops all cached thumbnails once when the format
+// generation changes, forcing lazy regeneration at the new size.
+func ensureThumbGeneration(dir string) {
+	marker := filepath.Join(dir, ".gen")
+	if b, err := os.ReadFile(marker); err == nil && string(b) == thumbGen {
+		return
+	}
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".jpg") {
+				_ = os.Remove(filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	_ = os.WriteFile(marker, []byte(thumbGen), 0o644)
+}
 
 // App is the single object bound to the frontend.
 type App struct {
@@ -49,6 +74,11 @@ type App struct {
 	watcher    *watch.Watcher
 
 	pageCache *cache.LRU
+
+	// coverSem bounds concurrent cover decodes so transient memory stays low
+	// while a fresh library generates thumbnails on demand.
+	coverSem chan struct{}
+	coverGen atomic.Uint32
 }
 
 // mediaProvider adapts App to serve.Provider without exposing provider methods
@@ -63,7 +93,7 @@ func (m mediaProvider) Page(id int64, n int) ([]byte, string, error) {
 }
 
 func NewApp() *App {
-	return &App{metasDirty: true, pageCache: cache.NewLRU(8 << 20)}
+	return &App{metasDirty: true, pageCache: cache.NewLRU(8 << 20), coverSem: make(chan struct{}, 2)}
 }
 
 // dbg appends one line to <appdir>/tmp/debug.log when COMICGO_DEBUG=1.
@@ -102,6 +132,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.store = st
 	a.thumbs = cache.NewThumbStore(paths.Thumbs)
+	ensureThumbGeneration(paths.Thumbs)
 
 	// loopback media server (unless the user chose blob transport)
 	if s.MediaTransport != "blob" {
@@ -637,15 +668,27 @@ func (a *App) coverBytes(id int64) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	// Bounded decode: at most two cover generations run at once, so decoding a
+	// fresh library's huge first pages never spikes memory.
+	a.coverSem <- struct{}{}
+	defer func() { <-a.coverSem }()
 	raw, err := openCoverRaw(path)
 	if err != nil {
 		return nil, "", err
 	}
-	thumb, err := imgutil.ThumbJPEG(raw, 320, 80)
+	// 256px long edge keeps decoded-in-browser covers small (less memory per
+	// scrolled image while remaining crisp at shelf sizes).
+	thumb, err := imgutil.ThumbJPEG(raw, 256, 80)
 	if err != nil {
 		return nil, "", err
 	}
 	_ = a.thumbs.Write(id, thumb) // best-effort cache
+	// Return freed memory to the OS now and then, so Task Manager doesn't show
+	// the whole transient-decode peak as resident memory.
+	if a.coverGen.Add(1)%30 == 0 {
+		goruntime.GC()
+		debug.FreeOSMemory()
+	}
 	return thumb, "image/jpeg", nil
 }
 

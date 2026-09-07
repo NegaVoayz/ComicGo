@@ -109,8 +109,11 @@ func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// no-store: don't let Chromium pin decoded covers in memory while scrolling
+	// a large library. Re-serving from the loopback server is cheap (Go keeps a
+	// small LRU); the memory saving is significant.
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Write(b)
 }
 
@@ -136,6 +139,6 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Write(b)
 }
