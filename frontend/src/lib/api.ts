@@ -14,11 +14,28 @@ export interface ComicCard {
   id: number
   filename: string
   title: string
+  author: string
+  tags: string[]
   pageCount: number
   fav: boolean
   lastPage: number
   hasNonUtf8: boolean
   coverUrl: string
+}
+
+// The parts of the backend's ComicDetail the info screen reads. meta.kv holds
+// every "key=value" comment line (Author, Genre, Source, Title, ...).
+export interface ComicDetailMeta {
+  id: number
+  filename: string
+  pageCount: number
+  lastReadPage: number
+  kv: Record<string, string>
+}
+export interface ComicDetail {
+  meta: ComicDetailMeta
+  commentRaw: string
+  allMetaKeys: string[]
 }
 
 export interface RuleInfo {
@@ -72,6 +89,7 @@ export const reloadLayout = () => Go.ReloadLayout()
 export const saveLayout = (d: LayoutDoc) => Go.SaveLayout(d)
 export const updateSectionRule = (sectionId: string, kind: string, ruleId: string) =>
   Go.UpdateSectionRule(sectionId, kind, ruleId)
+export const getComicDetail = (id: number) => Go.GetComicDetail(id) as unknown as Promise<ComicDetail>
 export const getCover = (id: number) => Go.GetCover(id)
 export const getPageRef = (id: number, page: number) => Go.GetPageRef(id, page)
 export const openComic = (id: number) => Go.OpenComic(id)

@@ -148,3 +148,30 @@ func TestPurgeRootOnlyAffectsTargetDir(t *testing.T) {
 		t.Errorf("CountComics after purge = %d, want 1", n)
 	}
 }
+
+func TestCardTags(t *testing.T) {
+	tests := []struct {
+		name  string
+		genre string
+		want  []string
+	}{
+		{name: "empty", genre: "", want: nil},
+		{name: "splits and trims", genre: "ロリ, 無修正, 中国翻訳", want: []string{"ロリ", "無修正", "中国翻訳"}},
+		{name: "dedupes", genre: "ロリ, ロリ, 中出", want: []string{"ロリ", "中出"}},
+		{name: "caps at six", genre: "a, b, c, d, e, f, g, h", want: []string{"a", "b", "c", "d", "e", "f"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := model.Meta{KV: map[string]string{"Genre": tt.genre}}
+			got := cardTags(m)
+			if len(got) != len(tt.want) {
+				t.Fatalf("cardTags = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("cardTags = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}

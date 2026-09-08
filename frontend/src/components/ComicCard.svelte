@@ -81,7 +81,17 @@
   <div class="meta">
     <button class="star" class:on={fav} title="Favorite" onclick={onToggleFav}>{fav ? '♥' : '♡'}</button>
     <div class="name" title={card.title}>{card.title}</div>
-    <div class="pages">{card.pageCount} pages</div>
+    {#if card.author}
+      <div class="author" title={card.author}>{card.author}</div>
+    {/if}
+    <div class="row">
+      {#if card.tags && card.tags.length > 0}
+        <span class="tags" title={card.tags.join(', ')}>
+          {#each card.tags.slice(0, 3) as tag (tag)}<span class="tag">{tag}</span>{/each}
+        </span>
+      {/if}
+      <span class="pages">{card.pageCount} pages</span>
+    </div>
   </div>
 </div>
 
@@ -176,8 +186,49 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    min-height: 16px;
+  }
+  .tags {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    gap: 4px;
+    overflow: hidden;
+  }
+  .tag {
+    flex: 0 1 auto; /* shrink rather than get sliced when the card is narrow */
+    min-width: 0;
+    max-width: 76px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: var(--panel-2);
+    color: var(--text-dim);
+  }
   .pages {
+    flex-shrink: 0;
+    margin-left: auto;
     color: var(--text-dim);
     font-size: 11px;
+    text-align: right;
+  }
+  .author {
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+    padding-right: 4px;
   }
 </style>

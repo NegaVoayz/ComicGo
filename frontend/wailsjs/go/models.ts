@@ -22,6 +22,8 @@ export namespace model {
 	    id: number;
 	    filename: string;
 	    title: string;
+	    author: string;
+	    tags: string[];
 	    pageCount: number;
 	    fav: boolean;
 	    lastPage: number;
@@ -37,6 +39,8 @@ export namespace model {
 	        this.id = source["id"];
 	        this.filename = source["filename"];
 	        this.title = source["title"];
+	        this.author = source["author"];
+	        this.tags = source["tags"];
 	        this.pageCount = source["pageCount"];
 	        this.fav = source["fav"];
 	        this.lastPage = source["lastPage"];

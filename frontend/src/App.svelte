@@ -19,6 +19,7 @@
   import Section from './components/Section.svelte'
   import CardSlot from './components/CardSlot.svelte'
   import Reader from './components/Reader.svelte'
+  import ComicInfo from './components/ComicInfo.svelte'
   import Toasts from './components/Toasts.svelte'
   import { error, ok } from './lib/toast'
   import * as Go from '../wailsjs/go/main/App'
@@ -43,6 +44,7 @@
   let refreshKey = $state(0)
   let indexed = $state(0)
   let reader: ComicRef | null = $state(null)
+  let info: { id: number; title: string } | null = $state(null)
   let showAbout = $state(false)
   let about: About | null = $state(null)
   let searchText = $state('')
@@ -168,19 +170,28 @@
       error(e?.message ?? 'Could not remove folder')
     }
   }
-  function openReader(card: ComicCard) {
-    const count = Math.max(card.pageCount, 0)
-    const resume = card.lastPage < count ? card.lastPage : Math.max(0, count - 1)
-    reader = { id: card.id, title: card.title, pageCount: count, resume }
+  // Clicking a card now opens the info screen (author, every tag, source) rather
+  // than the reader; reading starts from there, and exiting the reader lands back
+  // on that screen so the source stays one tap away.
+  function openInfo(card: ComicCard) {
+    info = { id: card.id, title: card.title }
   }
-  function closeReader() {
+  function closeInfo() {
+    info = null
+  }
+  function startReader(r: ComicRef) {
+    reader = r // info is left set: when the reader closes we return to it
+  }
+  function exitReader() {
     reader = null
     bump() // refresh shelf (progress chips, "recently read" ordering)
   }
 </script>
 
 {#if reader}
-  <Reader comic={reader} onExit={closeReader} />
+  <Reader comic={reader} onExit={exitReader} />
+{:else if info}
+  <ComicInfo comic={info} onExit={closeInfo} onStart={startReader} />
 {:else}
   <TopBar
     roots={settings?.libraryRoots ?? []}
@@ -210,7 +221,7 @@
             searchText={searchText}
             onSearchChange={(q) => (searchText = q)}
             gridHeight={winH > 0 ? Math.max(300, winH - 123) : 600}
-            onOpen={openReader}
+            onOpen={openInfo}
             onChanged={bump}
           />
         {:else}

@@ -467,6 +467,34 @@ func searchMetaMatch(m model.Meta, needle string) bool {
 	return false
 }
 
+// cardTagLimit bounds how many comment tags travel with each shelf card, so a
+// big tagged library does not bloat every page payload.
+const cardTagLimit = 6
+
+// cardTags returns the comic's Genre comment tags (the content labels we
+// imported), trimmed and de-duplicated, for the card caption. The author is
+// surfaced separately on its own caption line, not as one of these chips.
+func cardTags(m model.Meta) []string {
+	genre := strings.TrimSpace(m.KV["Genre"])
+	if genre == "" {
+		return nil
+	}
+	seen := make(map[string]bool, cardTagLimit)
+	out := make([]string, 0, cardTagLimit)
+	for _, part := range strings.Split(genre, ",") {
+		t := strings.TrimSpace(part)
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+		if len(out) == cardTagLimit {
+			break
+		}
+	}
+	return out
+}
+
 // ReportFrontend lets the UI log diagnostics into the debug file (debugging aid).
 func (a *App) ReportFrontend(msg string) {
 	a.dbg("FRONTEND: %s", msg)
@@ -498,6 +526,8 @@ func (a *App) GetComics(q model.PageQuery) ([]model.ComicCard, error) {
 	for _, m := range list[start:end] {
 		cards = append(cards, model.ComicCard{
 			ID: m.ID, Filename: m.Filename, Title: m.Title(),
+			Author:    strings.TrimSpace(m.KV["Author"]),
+			Tags:      cardTags(m),
 			PageCount: m.PageCount, Fav: m.Fav, LastPage: m.LastReadPage,
 			HasNonUTF8: m.HasNonUTF8,
 			CoverURL:   a.shelfCoverURL(m.ID),

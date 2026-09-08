@@ -42,7 +42,9 @@
   let raf = 0
 
   const ROWS_PER_CHUNK = 6
-  const CAPTION_H = 44
+  // Height reserved under each cover for the caption: title + author line +
+  // (tag chips | page count) footer. Must stay >= the tallest ComicCard meta.
+  const CAPTION_H = 60
   // Rows actually kept in the DOM around the viewport (small -> far cells are
   // removed and their pending cover loads aborted on a sudden jump).
   const RENDER_PAD = 1
