@@ -15,6 +15,7 @@
     refreshKey = 0,
     onOpen,
     onChanged,
+    onAddTag,
   }: {
     total: number
     load: (offset: number, limit: number) => Promise<Card[]>
@@ -25,6 +26,7 @@
     refreshKey?: number
     onOpen: (c: Card) => void
     onChanged?: () => void
+    onAddTag?: (tag: string) => void
   } = $props()
 
   let outer: HTMLElement | undefined = $state()
@@ -186,7 +188,7 @@
                 style="left:{col * (cardW + gap) + pad}px; top:{row * rowH + pad}px; width:{cardW}px;"
               >
                 {#if card}
-                  <ComicCard {card} {onOpen} {onChanged} />
+                  <ComicCard {card} {onOpen} {onChanged} {onAddTag} />
                 {:else}
                   <div class="cellph" style="height:{cardH}px"></div>
                 {/if}

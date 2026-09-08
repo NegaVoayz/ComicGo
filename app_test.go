@@ -87,12 +87,12 @@ func TestSearchMatching(t *testing.T) {
 	a.store = st
 
 	cases := map[string]int{
-		"alpha":   1, // Title value
-		"space":   1, // Title value substring
-		"zeta":    1, // filename (title fallback strips ext, filename still matches)
-		"tanaka":  1, // metadata value
-		"nope":    0,
-		"":        3, // empty search = all
+		"alpha":  1, // Title value
+		"space":  1, // Title value substring
+		"zeta":   1, // filename (title fallback strips ext, filename still matches)
+		"tanaka": 1, // metadata value
+		"nope":   0,
+		"":       3, // empty search = all
 	}
 	for q, want := range cases {
 		if got := a.CountMatching(q, ""); got != want {
@@ -146,6 +146,95 @@ func TestPurgeRootOnlyAffectsTargetDir(t *testing.T) {
 	}
 	if n := a.CountComics(""); n != 1 {
 		t.Errorf("CountComics after purge = %d, want 1", n)
+	}
+}
+
+func TestParseSearchTerms(t *testing.T) {
+	tests := []struct {
+		in   string
+		text []string
+		tags []string
+	}{
+		{in: "", text: nil, tags: nil},
+		{in: "alpha  beta", text: []string{"alpha", "beta"}, tags: nil},
+		{in: `tag:ロリ`, text: nil, tags: []string{"ロリ"}},
+		{in: `tag:"school girl" tanaka`, text: []string{"tanaka"}, tags: []string{"school girl"}},
+		{in: `tag:"a b" tag:"c" x`, text: []string{"x"}, tags: []string{"a b", "c"}},
+		{in: `"multi word" x`, text: []string{"multi word", "x"}, tags: nil},
+		{in: `   `, text: nil, tags: nil},
+	}
+	for _, tt := range tests {
+		q := parseSearch(tt.in)
+		if !eqStrings(q.text, tt.text) || !eqStrings(q.tags, tt.tags) {
+			t.Errorf("parseSearch(%q) = {text:%v tags:%v}, want {text:%v tags:%v}",
+				tt.in, q.text, q.tags, tt.text, tt.tags)
+		}
+	}
+}
+
+func eqStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestSearchTagTerms(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "app.db")
+	st, err := index.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	rows := []index.Record{
+		{Path: `C:\s\a.cbz`, Dir: `C:\s`, Filename: "a.cbz", FileSize: 1, MtimeNs: 1,
+			PageCount: 2, KV: map[string]string{"Genre": "ロリ, 無修正"}},
+		{Path: `C:\s\b.cbz`, Dir: `C:\s`, Filename: "b.cbz", FileSize: 2, MtimeNs: 2,
+			PageCount: 2, KV: map[string]string{"Genre": "ロリコン, 無修正"}},
+		{Path: `C:\s\c.cbz`, Dir: `C:\s`, Filename: "c.cbz", FileSize: 3, MtimeNs: 3,
+			PageCount: 2, KV: map[string]string{"Genre": "ロリ巨乳, 学生"}},
+		{Path: `C:\s\d.cbz`, Dir: `C:\s`, Filename: "d.cbz", FileSize: 4, MtimeNs: 4,
+			PageCount: 2, KV: map[string]string{"Genre": "ロリ, 無修正", "Author": "Tanaka"}},
+		{Path: `C:\s\e.cbz`, Dir: `C:\s`, Filename: "e.cbz", FileSize: 5, MtimeNs: 5,
+			PageCount: 2, KV: map[string]string{"Genre": "school girl"}},
+	}
+	for _, r := range rows {
+		if _, err := st.CommitComic(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := NewApp()
+	a.store = st
+
+	cases := map[string]int{
+		"tag:ロリ":            2, // a, d — exact tag, NOT b (ロリコン) or c (ロリ巨乳)
+		"tag:ロリ tag:無修正":    2, // a, d
+		"tag:ロリ tag:学生":     0, // no comic has both
+		`tag:"school girl"`: 1, // e — quoted tag with a space
+		"tag:ロリコン":          1, // b
+		"ロリ":                4, // plain text still substrings ロリコン/ロリ巨乳
+		"ロリ tag:学生":         1, // c: text ロリ (in ロリ巨乳) AND tag 学生
+		"tanaka tag:ロリ":     1, // d: text term in Author value AND tag
+	}
+	for q, want := range cases {
+		if got := a.CountMatching(q, ""); got != want {
+			t.Errorf("CountMatching(%q) = %d, want %d", q, got, want)
+		}
+	}
+
+	// the same query drives the paged list
+	cards, err := a.GetComics(model.PageQuery{Limit: 10, Search: "tag:ロリ tag:無修正"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 2 {
+		t.Fatalf("GetComics(tags) = %d cards, want 2", len(cards))
 	}
 }
 

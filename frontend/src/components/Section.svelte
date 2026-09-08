@@ -18,8 +18,12 @@
     scanning = false,
     searchText = '',
     gridHeight = 600,
+    tags = [],
     onOpen,
     onSearchChange,
+    onAddTag,
+    onRemoveTag,
+    onClearTags,
     onChanged,
   }: {
     section: LayoutSection
@@ -29,19 +33,32 @@
     scanning?: boolean
     searchText?: string
     gridHeight?: number
+    tags?: string[]
     onOpen: (c: ComicCard) => void
     onSearchChange: (q: string) => void
+    onAddTag: (tag: string) => void
+    onRemoveTag: (tag: string) => void
+    onClearTags: () => void
     onChanged: () => void
   } = $props()
 
   let total = $state(0)
 
+  // The search box shows only the raw text; the queries the backend sees append
+  // each active tag as a quoted "tag:..." term. Count and list go through this
+  // same query, and every Section shares it (still scoped to its own filter).
+  const query = $derived(
+    [searchText.trim(), ...tags.map((t) => `tag:"${t.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)]
+      .filter(Boolean)
+      .join(' ')
+  )
+
   // Refetch the count whenever the search/filter/scan/refresh change.
   $effect(() => {
     void refreshKey
     void scanning
-    void searchText
-    countMatching(searchText, section.filterRuleId || '')
+    void query
+    countMatching(query, section.filterRuleId || '')
       .then((n) => {
         total = n
         report(`Section(${section.id}) count resolved -> ${n} scanning=${scanning} rk=${refreshKey}`)
@@ -58,7 +75,7 @@
       limit,
       filterRuleId: section.filterRuleId || '',
       sortRuleId: section.sortRuleId || '',
-      search: searchText,
+      search: query,
     })
     return cards as unknown as ComicCard[]
   }
@@ -100,10 +117,21 @@
       </select>
     </div>
   </div>
+  {#if tags.length > 0}
+    <div class="tagbar">
+      <span class="tb-label">Tags</span>
+      {#each tags as t (t)}
+        <button class="chip" type="button" title="Remove this tag filter" onclick={() => onRemoveTag(t)}>
+          {t}<span class="x">✕</span>
+        </button>
+      {/each}
+      <button class="clear" type="button" onclick={onClearTags}>Clear</button>
+    </div>
+  {/if}
   {#if scanning && total === 0}
     <div class="hint">Scanning your library…</div>
   {:else}
-    {#key `${total}|${searchText}|${section.filterRuleId || ''}|${section.sortRuleId || ''}`}
+    {#key `${total}|${query}|${section.filterRuleId || ''}|${section.sortRuleId || ''}`}
       <!-- remount only when this section's dataset really changes; favorite
            toggles and progress updates must NOT reload every cover -->
       <VirtualGrid
@@ -112,6 +140,7 @@
         {refreshKey}
         height={gridHeight}
         onOpen={onOpen}
+        {onAddTag}
         onChanged={onChanged}
       />
     {/key}
@@ -162,5 +191,47 @@
     text-align: center;
     background: var(--bg);
     border-radius: var(--radius);
+  }
+  .tagbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tb-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-right: 2px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px 3px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 12px;
+  }
+  .chip:hover {
+    border-color: var(--fav);
+    color: var(--fav);
+  }
+  .chip .x {
+    font-size: 10px;
+    line-height: 1;
+  }
+  .clear {
+    padding: 3px 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+    background: none;
+    border: none;
+  }
+  .clear:hover {
+    color: var(--text);
   }
 </style>

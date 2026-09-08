@@ -6,10 +6,12 @@
     card,
     onOpen,
     onChanged,
+    onAddTag,
   }: {
     card: Card
     onOpen: (c: Card) => void
     onChanged?: () => void
+    onAddTag?: (tag: string) => void
   } = $props()
 
   let src = $state(card.coverUrl || '')
@@ -45,6 +47,14 @@
 
   function open() {
     onOpen(card)
+  }
+
+  // Clicking a tag chip filters the shelf by that tag instead of opening the
+  // comic. Without an onAddTag handler the chip click falls through to open().
+  function pickTag(e: MouseEvent, tag: string) {
+    if (!onAddTag) return
+    e.stopPropagation()
+    onAddTag(tag)
   }
 
   let initials = card.title
@@ -87,7 +97,16 @@
     <div class="row">
       {#if card.tags && card.tags.length > 0}
         <span class="tags" title={card.tags.join(', ')}>
-          {#each card.tags.slice(0, 3) as tag (tag)}<span class="tag">{tag}</span>{/each}
+          {#each card.tags.slice(0, 3) as tag (tag)}
+            <button
+              class="tag"
+              type="button"
+              title={onAddTag ? `Show comics tagged ${tag}` : tag}
+              onclick={(e) => pickTag(e, tag)}
+            >
+              {tag}
+            </button>
+          {/each}
         </span>
       {/if}
       <span class="pages">{card.pageCount} pages</span>
@@ -210,9 +229,14 @@
     font-size: 10px;
     line-height: 1;
     padding: 2px 5px;
+    border: none;
     border-radius: 4px;
     background: var(--panel-2);
     color: var(--text-dim);
+  }
+  .tag:hover {
+    color: var(--text);
+    background: var(--panel);
   }
   .pages {
     flex-shrink: 0;

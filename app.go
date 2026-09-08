@@ -429,31 +429,122 @@ func (a *App) CountComics(filterRuleID string) int {
 	return n
 }
 
-// CountMatching returns the number of comics matching a free-text query
-// (optionally narrowed by a filter rule). Used by the search box.
+// CountMatching returns the number of comics matching a search query
+// (optionally narrowed by a filter rule). The query may hold plain words and
+// tag terms (tag:...); see parseSearch. Count and list go through the same
+// parser so they can never disagree.
 func (a *App) CountMatching(search, filterRuleID string) int {
 	return len(a.selection(search, filterRuleID))
 }
 
-// selection returns the comics matching an optional free-text search and an
-// optional filter rule. Search is case-insensitive substring over title,
-// filename and every metadata value/key.
+// searchQuery is a parsed search box query: text substrings and exact whole-tag
+// matches. Every term must match (logical AND): all text terms must occur
+// somewhere and all tags must be present on the comic.
+type searchQuery struct {
+	text []string // lower-cased substrings, all must occur somewhere
+	tags []string // whole-tag matches (case-insensitive), all must be present
+}
+
+// parseSearch turns a search box string into structured terms. Plain words are
+// text substrings (case-insensitive, anywhere in title/file/metadata); a term
+// of the form tag:name matches a whole tag exactly (ロリ does not match ロリコン).
+// tag:"a b" quotes a tag that contains spaces. Double quotes group any text; a
+// backslash escapes the next character inside a quoted group.
+func parseSearch(s string) searchQuery {
+	var q searchQuery
+	for _, tok := range splitSearchTerms(s) {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		if v, ok := strings.CutPrefix(tok, "tag:"); ok {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				q.tags = append(q.tags, v)
+			}
+		} else {
+			q.text = append(q.text, strings.ToLower(tok))
+		}
+	}
+	return q
+}
+
+// splitSearchTerms splits s on whitespace but keeps double-quoted groups whole,
+// so tag:"a b" stays a single term. Quote characters are dropped; a backslash
+// escapes the next character inside a quoted group.
+func splitSearchTerms(s string) []string {
+	var terms []string
+	var b strings.Builder
+	inQ, esc := false, false
+	flush := func() {
+		if b.Len() > 0 {
+			terms = append(terms, b.String())
+			b.Reset()
+		}
+	}
+	for _, r := range s {
+		if esc {
+			b.WriteRune(r)
+			esc = false
+			continue
+		}
+		switch r {
+		case '\\':
+			if inQ {
+				esc = true
+			} else {
+				b.WriteRune(r)
+			}
+		case '"':
+			inQ = !inQ
+		case ' ', '\t', '\r', '\n':
+			if inQ {
+				b.WriteRune(r)
+			} else {
+				flush()
+			}
+		default:
+			b.WriteRune(r)
+		}
+	}
+	flush()
+	return terms
+}
+
+// selection returns the comics matching an optional search query and filter
+// rule. An empty query selects everything (still honouring the filter).
 func (a *App) selection(search, filterRuleID string) []model.Meta {
 	list := a.filtered(filterRuleID)
-	needle := strings.ToLower(strings.TrimSpace(search))
-	if needle == "" {
+	q := parseSearch(search)
+	if len(q.text) == 0 && len(q.tags) == 0 {
 		return list
 	}
 	out := make([]model.Meta, 0, len(list))
 	for _, m := range list {
-		if searchMetaMatch(m, needle) {
+		if searchQueryMatch(m, q) {
 			out = append(out, m)
 		}
 	}
 	return out
 }
 
-func searchMetaMatch(m model.Meta, needle string) bool {
+func searchQueryMatch(m model.Meta, q searchQuery) bool {
+	for _, needle := range q.text {
+		if !textFieldMatch(m, needle) {
+			return false
+		}
+	}
+	for _, tag := range q.tags {
+		if !metaHasTag(m, tag) {
+			return false
+		}
+	}
+	return true
+}
+
+// textFieldMatch reports whether needle occurs (case-insensitively) in the
+// title, file name, or any metadata key/value.
+func textFieldMatch(m model.Meta, needle string) bool {
 	if strings.Contains(strings.ToLower(m.Title()), needle) ||
 		strings.Contains(strings.ToLower(m.Filename), needle) {
 		return true
@@ -461,6 +552,18 @@ func searchMetaMatch(m model.Meta, needle string) bool {
 	for k, v := range m.KV {
 		if strings.Contains(strings.ToLower(k), needle) ||
 			strings.Contains(strings.ToLower(v), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// metaHasTag reports whether the comic carries tag as one of its Genre comment
+// tags, compared exactly and case-insensitively. Genre is the list the UI shows
+// as tag chips (Author is a separate key, not a searchable tag).
+func metaHasTag(m model.Meta, tag string) bool {
+	for _, part := range strings.Split(m.KV["Genre"], ",") {
+		if strings.EqualFold(strings.TrimSpace(part), tag) {
 			return true
 		}
 	}

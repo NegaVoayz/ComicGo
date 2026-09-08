@@ -48,6 +48,7 @@
   let showAbout = $state(false)
   let about: About | null = $state(null)
   let searchText = $state('')
+  let tagFilters = $state<string[]>([]) // exact tags ANDed into every section's query
   let winH = $state(0) // tracks window height so the grid can fill it (no dead space below)
 
   function bump() {
@@ -176,6 +177,18 @@
   function openInfo(card: ComicCard) {
     info = { id: card.id, title: card.title }
   }
+  function addTag(t: string) {
+    t = t.trim()
+    if (!t) return
+    if (tagFilters.some((x) => x.toLowerCase() === t.toLowerCase())) return
+    tagFilters = [...tagFilters, t]
+  }
+  function removeTag(t: string) {
+    tagFilters = tagFilters.filter((x) => x !== t)
+  }
+  function clearTags() {
+    if (tagFilters.length > 0) tagFilters = []
+  }
   function closeInfo() {
     info = null
   }
@@ -191,7 +204,7 @@
 {#if reader}
   <Reader comic={reader} onExit={exitReader} />
 {:else if info}
-  <ComicInfo comic={info} onExit={closeInfo} onStart={startReader} />
+  <ComicInfo comic={info} onExit={closeInfo} onStart={startReader} onAddTag={addTag} />
 {:else}
   <TopBar
     roots={settings?.libraryRoots ?? []}
@@ -220,6 +233,10 @@
             scanning={scanning}
             searchText={searchText}
             onSearchChange={(q) => (searchText = q)}
+            tags={tagFilters}
+            onAddTag={addTag}
+            onRemoveTag={removeTag}
+            onClearTags={clearTags}
             gridHeight={winH > 0 ? Math.max(300, winH - 123) : 600}
             onOpen={openInfo}
             onChanged={bump}

@@ -18,10 +18,12 @@
     comic,
     onExit,
     onStart,
+    onAddTag,
   }: {
     comic: { id: number; title: string }
     onExit: () => void
     onStart: (r: StartRef) => void
+    onAddTag?: (tag: string) => void
   } = $props()
 
   let title = $state(comic.title)
@@ -110,6 +112,12 @@
     onStart({ id: comic.id, title, pageCount, resume: lastPage })
   }
 
+  // Clicking a tag filters the library by it and returns to the shelf.
+  function pickTag(t: string) {
+    onAddTag?.(t)
+    onExit()
+  }
+
   async function copySource() {
     if (!source) return
     const flash = () => {
@@ -179,7 +187,11 @@
         <div class="block">
           <div class="lbl">Tags</div>
           <div class="tags">
-            {#each tags as t (t)}<span class="tag" title={t}>{t}</span>{/each}
+            {#each tags as t (t)}
+              <button class="tag" type="button" title={`Show comics tagged ${t}`} onclick={() => pickTag(t)}>
+                {t}
+              </button>
+            {/each}
           </div>
         </div>
       {/if}
@@ -318,6 +330,11 @@
     background: var(--panel);
     border: 1px solid var(--line);
     color: var(--text);
+    cursor: pointer;
+  }
+  .tag:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .src {
     display: flex;
