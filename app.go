@@ -37,7 +37,7 @@ import (
 var errImportCancelled = errors.New("import cancelled")
 
 // Version is the human-facing app version.
-const Version = "0.2.0"
+const Version = "0.1.0"
 
 // thumbGen marks the current cover thumbnail format. Bump it (and let
 // ensureThumbGeneration clear the cache) whenever thumb dimensions change so

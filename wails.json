@@ -9,5 +9,10 @@
   "author": {
     "name": "NegaVoayz",
     "email": "minecrat@163.com"
+  },
+  "info": {
+    "productName": "ComicGo",
+    "productVersion": "0.1.0",
+    "companyName": "NegaVoayz"
   }
 }
