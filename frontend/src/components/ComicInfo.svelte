@@ -4,7 +4,8 @@
   // download source (a magnet) with a copy button, and a Start-reading action.
   // Replaces the old "click straight into the reader" flow.
   import { onMount } from 'svelte'
-  import { getComicDetail, getPageRef, getProgress } from '../lib/api'
+  import { getComicDetail, getPageRef, getProgress, updateComicMetadata } from '../lib/api'
+  import { ok, error } from '../lib/toast'
   import { ClipboardSetText } from '../../wailsjs/runtime/runtime'
 
   interface StartRef {
@@ -36,6 +37,13 @@
   let heroFailed = $state(false)
   let heroReady = $state(false)
   let copied = $state(false)
+  let editing = $state(false)
+  let busy = $state(false)
+  let saveErr = $state('')
+  let fTitle = $state('')
+  let fAuthor = $state('')
+  let fTags = $state('')
+  let fSource = $state('')
 
   // splitGenre mirrors the backend's Genre-tag list handling (trim + dedupe).
   function splitGenre(genre: string): string[] {
@@ -87,7 +95,8 @@
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        onExit()
+        if (editing) closeEdit()
+        else onExit()
       }
     }
     window.addEventListener('keydown', key)
@@ -140,6 +149,51 @@
     }
   }
 
+  // ---- metadata editing ----
+
+  function openEdit() {
+    fTitle = title
+    fAuthor = author
+    fTags = tags.join(', ')
+    fSource = source
+    saveErr = ''
+    editing = true
+  }
+
+  function closeEdit() {
+    if (busy) return
+    editing = false
+  }
+
+  async function save() {
+    if (busy) return
+    busy = true
+    saveErr = ''
+    try {
+      const d = await updateComicMetadata(comic.id, {
+        title: fTitle.trim(),
+        author: fAuthor.trim(),
+        genre: fTags.trim(),
+        source: fSource.trim(),
+      })
+      // Refresh the info screen from the saved comment. A title edit may have
+      // renamed the file, but the id is stable so nothing else changes.
+      const kv = d?.meta?.kv ?? {}
+      title = kv['Title'] || comic.title
+      author = kv['Author'] || ''
+      tags = splitGenre(kv['Genre'] || '')
+      source = kv['Source'] || ''
+      editing = false
+      ok('Metadata saved')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      saveErr = msg
+      error(msg)
+    } finally {
+      busy = false
+    }
+  }
+
   const startLabel = $derived(
     pageCount > 0 ? (lastPage > 0 ? `Continue · page ${lastPage + 1} of ${pageCount}` : `Start reading · ${pageCount} pages`) : 'Open'
   )
@@ -148,6 +202,7 @@
 <div class="info">
   <div class="top">
     <button onclick={onExit} title="Back to library (Esc)">← Library</button>
+    <button class="edit" onclick={openEdit} title="Edit title, author, tags and source">✎ Edit metadata</button>
   </div>
 
   <div class="body">
@@ -214,6 +269,40 @@
       </button>
     </div>
   </div>
+
+  {#if editing}
+    <button
+      class="backdrop"
+      type="button"
+      aria-label="Close metadata editor"
+      tabindex="-1"
+      onclick={closeEdit}
+    ></button>
+    <div class="modal" role="dialog" aria-label="Edit metadata">
+      <h3>✎ Edit metadata</h3>
+      <label>
+        Title
+        <input type="text" bind:value={fTitle} placeholder="Comic title" />
+      </label>
+      <label>
+        Author
+        <input type="text" bind:value={fAuthor} placeholder="Author / circle name" />
+      </label>
+      <label>
+        Tags
+        <input type="text" bind:value={fTags} placeholder="Comma-separated, e.g. comedy, romance" />
+      </label>
+      <label>
+        Source
+        <input type="text" bind:value={fSource} placeholder="Magnet link or source URL" />
+      </label>
+      {#if saveErr}<p class="err">{saveErr}</p>{/if}
+      <div class="actions">
+        <button type="button" onclick={closeEdit} disabled={busy}>Cancel</button>
+        <button class="save" type="button" onclick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -381,6 +470,70 @@
   }
   .start:hover:not(:disabled) {
     background: #ecb769;
+    border: none;
+  }
+  .top .edit {
+    margin-left: auto;
+  }
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    cursor: default;
+  }
+  .modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 31;
+    width: min(420px, 92vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  }
+  .modal h3 {
+    margin: 0;
+    font-size: 15px;
+  }
+  .modal label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+  .modal input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .err {
+    margin: 0;
+    font-size: 12px;
+    color: #e6a08c;
+  }
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .save {
+    font-weight: 600;
+    background: var(--accent);
+    color: #14100a;
     border: none;
   }
 </style>

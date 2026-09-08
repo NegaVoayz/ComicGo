@@ -114,6 +114,10 @@ export function ToggleFavorite(arg1) {
   return window['go']['main']['App']['ToggleFavorite'](arg1);
 }
 
+export function UpdateComicMetadata(arg1, arg2) {
+  return window['go']['main']['App']['UpdateComicMetadata'](arg1, arg2);
+}
+
 export function UpdateSectionRule(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateSectionRule'](arg1, arg2, arg3);
 }

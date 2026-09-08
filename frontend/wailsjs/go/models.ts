@@ -206,6 +206,24 @@ export namespace model {
 	}
 	
 	
+	export class MetaEdit {
+	    title: string;
+	    author: string;
+	    genre: string;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MetaEdit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.author = source["author"];
+	        this.genre = source["genre"];
+	        this.source = source["source"];
+	    }
+	}
 	export class OpenResult {
 	    id: number;
 	    pageCount: number;

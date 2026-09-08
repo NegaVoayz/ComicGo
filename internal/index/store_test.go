@@ -106,6 +106,56 @@ func TestStoreLifecycle(t *testing.T) {
 	}
 }
 
+// MovePath must re-key a row without reassigning its id, so favorites and
+// reading progress (keyed by comic_id) survive a file rename.
+func TestMovePathKeepsIdentity(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	oldPath := filepath.Join("C:", "lib", "Old Title.cbz")
+	id, err := s.CommitComic(Record{
+		Path: oldPath, Dir: filepath.Dir(oldPath), Filename: "Old Title.cbz",
+		FileSize: 10, MtimeNs: 5, PageCount: 2, CoverEntry: "p1.jpg",
+		CommentRaw: "Title=Old Title", KV: map[string]string{"Title": "Old Title"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFavorite(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetProgress(id, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	newPath := filepath.Join("C:", "lib", "New Title.cbz")
+	if err := s.MovePath(oldPath, newPath); err != nil {
+		t.Fatalf("MovePath: %v", err)
+	}
+	if p, err := s.PathFromID(id); err != nil || p != newPath {
+		t.Fatalf("PathFromID after move = %q, %v", p, err)
+	}
+	if _, _, found, _ := s.FindFingerprint(oldPath); found {
+		t.Error("old path still indexed after move")
+	}
+	row, err := s.RowByID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Filename != "New Title.cbz" || !row.Fav || row.LastPage != 1 {
+		t.Errorf("row after move = filename %q fav %v lastPage %d", row.Filename, row.Fav, row.LastPage)
+	}
+
+	// Moving a path that is not indexed reports no rows.
+	if err := s.MovePath(filepath.Join("C:", "lib", "ghost.cbz"), filepath.Join("C:", "lib", "g.cbz")); err == nil {
+		t.Error("expected error moving an unindexed path")
+	}
+}
+
 func TestIsWithin(t *testing.T) {
 	dir := `C:\library\sub`
 	if !IsWithin(dir, `C:\library\sub\a.cbz`) {

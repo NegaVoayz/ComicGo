@@ -58,4 +58,6 @@ export function StartScan():Promise<void>;
 
 export function ToggleFavorite(arg1:number):Promise<boolean>;
 
+export function UpdateComicMetadata(arg1:number,arg2:model.MetaEdit):Promise<model.ComicDetail>;
+
 export function UpdateSectionRule(arg1:string,arg2:string,arg3:string):Promise<void>;

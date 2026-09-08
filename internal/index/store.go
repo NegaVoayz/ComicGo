@@ -217,6 +217,24 @@ func (s *Store) DeleteByPath(path string) error {
 	return err
 }
 
+// MovePath re-keys an indexed comic from oldPath to newPath — the row that
+// follows when the archive file is renamed on disk. The id is untouched, so
+// the comic_meta keys, favorites and reading progress all survive the move.
+func (s *Store) MovePath(oldPath, newPath string) error {
+	res, err := s.db.ExecContext(context.Background(),
+		`UPDATE comics SET path=?, dir_path=?, filename=? WHERE path=?`,
+		newPath, filepath.Dir(newPath), filepath.Base(newPath), oldPath)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // ListPaths returns every indexed comic path.
 func (s *Store) ListPaths() ([]string, error) {
 	rows, err := s.db.QueryContext(context.Background(), `SELECT path FROM comics`)

@@ -72,6 +72,15 @@ type ComicDetail struct {
 	AllMetaKeys []string `json:"allMetaKeys"`
 }
 
+// MetaEdit is the editable subset of a comic's comment metadata, sent from the
+// info screen's edit form. An empty field clears that key.
+type MetaEdit struct {
+	Title  string `json:"title"`
+	Author string `json:"author"`
+	Genre  string `json:"genre"` // comma-separated tag list
+	Source string `json:"source"`
+}
+
 // PageQuery describes one paged slice of the (filtered, sorted) shelf.
 type PageQuery struct {
 	Offset       int    `json:"offset"`

@@ -93,6 +93,15 @@ export interface ImportOutcome {
   kind: 'file' | 'folder'
 }
 
+// The editable subset of a comic's comment metadata, posted from the info
+// screen's edit form. An empty field clears that key.
+export interface MetaEdit {
+  title: string
+  author: string
+  genre: string // comma-separated tags
+  source: string
+}
+
 // -- backend wrappers --
 export const listComics = (q: PageQuery) => Go.GetComics(q)
 export const countComics = (filter: string) => Go.CountComics(filter)
@@ -105,6 +114,8 @@ export const saveLayout = (d: LayoutDoc) => Go.SaveLayout(d)
 export const updateSectionRule = (sectionId: string, kind: string, ruleId: string) =>
   Go.UpdateSectionRule(sectionId, kind, ruleId)
 export const getComicDetail = (id: number) => Go.GetComicDetail(id) as unknown as Promise<ComicDetail>
+export const updateComicMetadata = (id: number, edit: MetaEdit) =>
+  Go.UpdateComicMetadata(id, edit) as unknown as Promise<ComicDetail>
 export const getCover = (id: number) => Go.GetCover(id)
 export const getPageRef = (id: number, page: number) => Go.GetPageRef(id, page)
 export const openComic = (id: number) => Go.OpenComic(id)
