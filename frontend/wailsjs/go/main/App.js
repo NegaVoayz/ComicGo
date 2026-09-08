@@ -58,6 +58,18 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function ImportArchive() {
+  return window['go']['main']['App']['ImportArchive']();
+}
+
+export function ImportDropped(arg1) {
+  return window['go']['main']['App']['ImportDropped'](arg1);
+}
+
+export function ImportFolder() {
+  return window['go']['main']['App']['ImportFolder']();
+}
+
 export function IsScanning() {
   return window['go']['main']['App']['IsScanning']();
 }

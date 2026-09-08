@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"comicgo/internal/comic"
 	"comicgo/internal/config"
 	"comicgo/internal/imgutil"
+	"comicgo/internal/importer"
 	"comicgo/internal/index"
 	"comicgo/internal/model"
 	"comicgo/internal/plugins"
@@ -28,6 +30,10 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// errImportCancelled is returned internally when the user cancels one of the
+// import destination dialogs; callers translate it into a silent empty result.
+var errImportCancelled = errors.New("import cancelled")
 
 // Version is the human-facing app version.
 const Version = "0.2.0"
@@ -56,12 +62,13 @@ func ensureThumbGeneration(dir string) {
 
 // App is the single object bound to the frontend.
 type App struct {
-	ctx    context.Context
-	mu     sync.Mutex
-	paths  *config.Paths
-	store  *index.Store
-	thumbs *cache.ThumbStore
-	media  *serve.Server
+	ctx      context.Context
+	mu       sync.Mutex
+	importMu sync.Mutex // serializes comic imports (one conversion at a time)
+	paths    *config.Paths
+	store    *index.Store
+	thumbs   *cache.ThumbStore
+	media    *serve.Server
 
 	settings model.Settings
 	layout   model.LayoutDoc
@@ -253,6 +260,210 @@ func (a *App) RemoveLibrary(dir string) error {
 	}
 	a.syncWatcher()
 	return nil
+}
+
+// ---- comic import ----
+
+// ImportArchive opens a file dialog for a supported comic archive, converts it
+// to a .cbz inside a library root and rescans so it appears on the shelf. A
+// cancelled dialog returns an empty outcome with no error.
+func (a *App) ImportArchive() (model.ImportOutcome, error) {
+	if a.ctx == nil {
+		return model.ImportOutcome{}, errors.New("app not ready")
+	}
+	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Import a comic archive",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Comics", Pattern: "*.zip;*.cbz;*.rar;*.cbr;*.7z;*.cb7;*.tar;*.tar.gz;*.tgz"},
+			{DisplayName: "All files", Pattern: "*.*"},
+		},
+	})
+	if err != nil {
+		return model.ImportOutcome{}, err
+	}
+	if file == "" {
+		return model.ImportOutcome{}, nil // cancelled
+	}
+	outs, err := a.runImports([]string{file})
+	if err != nil {
+		return model.ImportOutcome{}, err
+	}
+	if len(outs) == 0 {
+		return model.ImportOutcome{}, nil // destination picker cancelled
+	}
+	return outs[0], nil
+}
+
+// ImportFolder opens a directory dialog for a folder of pictures, converts it
+// to a .cbz inside a library root and rescans so it appears on the shelf. A
+// cancelled dialog returns an empty outcome with no error.
+func (a *App) ImportFolder() (model.ImportOutcome, error) {
+	if a.ctx == nil {
+		return model.ImportOutcome{}, errors.New("app not ready")
+	}
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Import a folder of pictures",
+	})
+	if err != nil {
+		return model.ImportOutcome{}, err
+	}
+	if dir == "" {
+		return model.ImportOutcome{}, nil // cancelled
+	}
+	outs, err := a.runImports([]string{dir})
+	if err != nil {
+		return model.ImportOutcome{}, err
+	}
+	if len(outs) == 0 {
+		return model.ImportOutcome{}, nil // destination picker cancelled
+	}
+	return outs[0], nil
+}
+
+// ImportDropped converts every file/folder dropped onto the window that is a
+// supported source. Non-importable dropped files are skipped silently so loose
+// dropped files do not spam errors; a drop containing only such files yields an
+// explanatory error. Any destination picker needed appears once for the batch.
+func (a *App) ImportDropped(paths []string) ([]model.ImportOutcome, error) {
+	return a.runImports(paths)
+}
+
+// runImports converts every source path (a supported archive file or an image
+// folder) into its own .cbz under one destination directory, then triggers a
+// scan. Returns the outcomes of the imports that succeeded; a non-nil error
+// reports items that failed (or that nothing was importable).
+func (a *App) runImports(sources []string) ([]model.ImportOutcome, error) {
+	if len(sources) == 0 {
+		return nil, nil
+	}
+	if !a.importMu.TryLock() {
+		return nil, errors.New("an import is already running")
+	}
+	defer a.importMu.Unlock()
+
+	dir, err := a.resolveImportDir()
+	if err != nil {
+		if errors.Is(err, errImportCancelled) {
+			return nil, nil // user cancelled the destination picker: stay quiet
+		}
+		return nil, err
+	}
+
+	var imported []model.ImportOutcome
+	var failures []string
+	for _, src := range sources {
+		out, err := a.importOne(src, dir)
+		if err != nil {
+			failures = append(failures, err.Error())
+			continue
+		}
+		if out != nil {
+			imported = append(imported, *out)
+		}
+	}
+	if len(imported) == 0 {
+		if len(failures) > 0 {
+			return nil, errors.New(strings.Join(failures, "; "))
+		}
+		return nil, errors.New("nothing to import: drop comic archives or image folders")
+	}
+	a.startScan() // the new .cbz files are now complete; index them
+	if len(failures) > 0 {
+		return imported, errors.New(strings.Join(failures, "; "))
+	}
+	return imported, nil
+}
+
+// importOne converts a single source into a unique .cbz under destDir, emitting
+// import:progress events while it streams. Returns (nil, nil) for a source this
+// app cannot import (a missing path or a file that is not an archive), so batch
+// drops can skip such noise without failing the rest.
+func (a *App) importOne(source, destDir string) (*model.ImportOutcome, error) {
+	fi, err := os.Stat(source)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // a stale dropped path
+		}
+		return nil, err
+	}
+	isDir := fi.IsDir()
+	if !isDir && !isImportableExt(source) {
+		return nil, nil // not an archive we read; skip silently
+	}
+	// A "brace" source name ({Author...} Title {Tag...}) becomes a .cbz named
+	// after the clean title, with the parsed metadata written into the archive
+	// comment (Title/Author/Genre) so the shelf shows author + tag chips and tag
+	// search works. Plain names import unchanged (no comment).
+	stem := importer.DesiredStem(source, isDir)
+	title, author, tags := importer.ParseName(stem)
+	base := stem + ".cbz"
+	comment := ""
+	if title != "" && (author != "" || len(tags) > 0) {
+		base = title + ".cbz"
+		comment = importer.BuildComment(title, author, tags)
+	}
+	dest := importer.UniqueDest(destDir, base)
+	pages, err := importer.Import(context.Background(), importer.Options{
+		Source:  source,
+		Dest:    dest,
+		Comment: comment,
+		OnProgress: func(done, total int) {
+			runtime.EventsEmit(a.ctx, "import:progress", model.ImportProgress{
+				Done: done, Total: total, Name: filepath.Base(dest),
+			})
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	kind := "file"
+	if isDir {
+		kind = "folder"
+	}
+	return &model.ImportOutcome{Path: dest, PageCount: pages, Source: source, Kind: kind}, nil
+}
+
+// isImportableExt reports whether a file path is an archive kind the importer
+// can convert (used to skip non-archive files dropped alongside real ones).
+func isImportableExt(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".zip", ".cbz", ".rar", ".cbr", ".7z", ".cb7", ".tar", ".gz", ".tgz":
+		return true
+	}
+	return false
+}
+
+// resolveImportDir applies the import destination rule: with a single library
+// root the converted .cbz goes straight into it; with several roots the user
+// picks a subfolder (defaulting to the first root) and only a folder inside a
+// configured root is accepted. A cancelled picker returns errImportCancelled.
+func (a *App) resolveImportDir() (string, error) {
+	roots := a.settings.LibraryRoots
+	if len(roots) == 0 {
+		return "", errors.New("add a library folder before importing comics")
+	}
+	if len(roots) == 1 {
+		return roots[0], nil
+	}
+	if a.ctx == nil {
+		return "", errors.New("app not ready")
+	}
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:            "Where should the imported comic go?",
+		DefaultDirectory: roots[0],
+	})
+	if err != nil {
+		return "", err
+	}
+	if dir == "" {
+		return "", errImportCancelled
+	}
+	for _, r := range roots {
+		if index.IsWithin(r, dir) {
+			return dir, nil
+		}
+	}
+	return "", fmt.Errorf("the chosen folder is not inside a library folder: %s", dir)
 }
 
 // pruneStaleRoots deletes any indexed comic that is not under a current

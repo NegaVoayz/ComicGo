@@ -35,6 +35,10 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		// Enables Wails' native file-drop handling so dragged files/folders
+		// arrive as absolute paths instead of navigating the webview; the
+		// frontend registers OnFileDrop to import them.
+		DragAndDrop:      &options.DragAndDrop{EnableFileDrop: true},
 		BackgroundColour: &options.RGBA{R: 24, G: 26, B: 32, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,

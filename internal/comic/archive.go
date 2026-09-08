@@ -27,14 +27,17 @@ func IsImageExt(name string) bool {
 // ErrNotAComic is returned when an archive holds no decodable image entries.
 var ErrNotAComic = errors.New("archive contains no image entries")
 
-// naturalLess implements an alphanumeric (numeric-aware) comparison so that
+// NaturalLess implements an alphanumeric (numeric-aware) comparison so that
 // page1, page2, page10 sort in the natural order. It returns a < b.
 //
 // Both inputs are split into alternating digit / non-digit tokens. Digit
 // tokens compare by numeric value (leading zeros stripped); other tokens
 // compare case-insensitively. If the token streams are equal up to the end of
 // the shorter string, the shorter string is less.
-func naturalLess(a, b string) bool {
+//
+// Exported so the importer package (which rebuilds archives) orders pages the
+// same way the reader re-sorts them on open.
+func NaturalLess(a, b string) bool {
 	ta, tb := tokens(a), tokens(b)
 	for i := 0; i < len(ta) && i < len(tb); i++ {
 		ca, cb := ta[i], tb[i]
@@ -121,7 +124,7 @@ func Open(path string) (*Archive, error) {
 			nonUTF8 = true
 		}
 	}
-	sort.Slice(pages, func(i, j int) bool { return naturalLess(pages[i].Name, pages[j].Name) })
+	sort.Slice(pages, func(i, j int) bool { return NaturalLess(pages[i].Name, pages[j].Name) })
 	if len(pages) == 0 {
 		rc.Close()
 		return nil, fmt.Errorf("%w: %s", ErrNotAComic, path)

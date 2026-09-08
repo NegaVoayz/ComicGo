@@ -29,15 +29,15 @@ func TestNaturalLess(t *testing.T) {
 		{"1.jpg", "10.jpg", true},
 	}
 	for _, c := range cases {
-		if got := naturalLess(c.a, c.b); got != c.want {
-			t.Errorf("naturalLess(%q,%q) = %v, want %v", c.a, c.b, got, c.want)
+		if got := NaturalLess(c.a, c.b); got != c.want {
+			t.Errorf("NaturalLess(%q,%q) = %v, want %v", c.a, c.b, got, c.want)
 		}
 	}
 }
 
 func TestNaturalSortOrder(t *testing.T) {
 	in := []string{"p10.jpg", "p2.jpg", "p1.jpg", "p1b.jpg"}
-	sort.SliceStable(in, func(i, j int) bool { return naturalLess(in[i], in[j]) })
+	sort.SliceStable(in, func(i, j int) bool { return NaturalLess(in[i], in[j]) })
 	want := []string{"p1.jpg", "p1b.jpg", "p2.jpg", "p10.jpg"}
 	if !reflect.DeepEqual(in, want) {
 		t.Errorf("sorted = %v, want %v", in, want)

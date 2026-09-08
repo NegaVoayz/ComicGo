@@ -5,6 +5,9 @@
     getAbout,
     getLayout,
     getSettings,
+    importArchiveFile,
+    importImageFolder,
+    importDropped,
     listRules,
     on,
     pickLibrary,
@@ -13,7 +16,8 @@
     startScan,
     cancelScan,
   } from './lib/api'
-  import type { About, ComicCard, LayoutDoc, RuleInfo, Settings } from './lib/api'
+  import type { About, ComicCard, ImportOutcome, ImportProgress, LayoutDoc, RuleInfo, Settings } from './lib/api'
+  import { OnFileDrop } from '../wailsjs/runtime/runtime'
   import TopBar from './components/TopBar.svelte'
   import Welcome from './components/Welcome.svelte'
   import Section from './components/Section.svelte'
@@ -50,6 +54,10 @@
   let searchText = $state('')
   let tagFilters = $state<string[]>([]) // exact tags ANDed into every section's query
   let winH = $state(0) // tracks window height so the grid can fill it (no dead space below)
+  let importing = $state(false) // a conversion is running (file/folder picker or drop)
+  let importProgress = $state<ImportProgress | null>(null) // last import:progress event
+  let dragOver = $state(false) // an OS file drag is over the window (drop highlight)
+  let dragDepth = 0
 
   function bump() {
     refreshKey += 1
@@ -101,6 +109,21 @@
     const un5 = on('scan:error', (e: any) => {
       error(e?.path ? `Scan: ${e.path}: ${e.error}` : `Scan error: ${e?.error ?? ''}`)
     })
+    const un6 = on('import:progress', (p: any) => {
+      importProgress = p
+    })
+    // Native file-drop handler: converts dropped files/folders into the library.
+    // useDropTarget=false means a drop anywhere on the window imports.
+    OnFileDrop((_x, _y, paths) => {
+      if (paths && paths.length > 0) doImportDrop(paths)
+    }, false)
+    // A passive highlight so the user knows a drop will import. The drop itself
+    // is intercepted by Wails' OnFileDrop (always preventDefaults file drops),
+    // so these listeners only track whether to show the overlay.
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
     const onErr = (e: any) => {
       const st = e?.error?.stack ? String(e.error.stack).split('\n').slice(0, 8).join(' < ') : ''
       logFront('window.error: ' + (e?.message ?? '') + ' STACK[' + st + ']')
@@ -118,9 +141,14 @@
       un3()
       un4()
       un5()
+      un6()
       window.removeEventListener('error', onErr)
       window.removeEventListener('unhandledrejection', onRej)
       window.removeEventListener('resize', onResize)
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
     }
   })
 
@@ -146,6 +174,87 @@
     } catch (e: any) {
       error(e?.message ?? 'Could not reload layout.json')
     }
+  }
+
+  // ---- import ----
+
+  function nameOf(path: string): string {
+    const trimmed = path.replace(/[\\/]+$/, '')
+    const parts = trimmed.split(/[\\/]/)
+    return parts[parts.length - 1] || path
+  }
+
+  const importLabel = $derived(
+    importProgress
+      ? importProgress.total > 0
+        ? `Importing ${importProgress.name}… ${importProgress.done}/${importProgress.total} pages`
+        : `Importing ${importProgress.name}… page ${importProgress.done}`
+      : importing
+        ? 'Importing…'
+        : ''
+  )
+
+  // One toast per finished comic; a cancelled dialog resolves empty and stays quiet.
+  function toastOutcomes(outs: ImportOutcome[]) {
+    if (!outs || outs.length === 0) return
+    if (outs.length === 1) {
+      const o = outs[0]
+      ok(`Imported ${nameOf(o.path)} — ${o.pageCount} pages`)
+    } else {
+      ok(`Imported ${outs.length} comics into the library`)
+    }
+    bump()
+  }
+
+  async function runImport(work: Promise<ImportOutcome[]>) {
+    if (importing) return
+    importing = true
+    importProgress = null
+    try {
+      toastOutcomes(await work)
+    } catch (e: any) {
+      error(e?.message ?? 'Import failed')
+    } finally {
+      importing = false
+      importProgress = null
+    }
+  }
+
+  function doImportFile() {
+    // Resolve to an empty array when the dialog was cancelled (empty path).
+    runImport(importArchiveFile().then((o) => (o && o.path ? [o] : [])))
+  }
+  function doImportFolder() {
+    runImport(importImageFolder().then((o) => (o && o.path ? [o] : [])))
+  }
+  function doImportDrop(paths: string[]) {
+    runImport(importDropped(paths))
+  }
+
+  // ---- drag-and-drop highlight (import happens via the native Wails drop) ----
+
+  function hasFiles(e: DragEvent): boolean {
+    return !!e.dataTransfer && Array.from(e.dataTransfer.types ?? []).includes('Files')
+  }
+  function onDragEnter(e: DragEvent) {
+    if (!hasFiles(e)) return
+    e.preventDefault()
+    dragDepth++
+    dragOver = true
+  }
+  function onDragOver(e: DragEvent) {
+    if (!hasFiles(e)) return
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  }
+  function onDragLeave(e: DragEvent) {
+    if (!hasFiles(e)) return
+    dragDepth = Math.max(0, dragDepth - 1)
+    if (dragDepth === 0) dragOver = false
+  }
+  function onDrop(e: DragEvent) {
+    dragDepth = 0
+    dragOver = false
   }
 
   async function openAbout() {
@@ -211,10 +320,13 @@
     {scanning}
     progress={scanProgress}
     comics={indexed}
+    importing={importing}
     onAdd={addFolder}
     onScan={doScan}
     onCancel={doCancel}
     onRemoveRoot={removeRoot}
+    onImportFile={doImportFile}
+    onImportFolder={doImportFolder}
     onAbout={openAbout}
     onReloadLayout={doReloadLayout}
   />
@@ -269,6 +381,19 @@
   </div>
 {/if}
 
+{#if importing}
+  <div class="impbar" role="status">
+    <span class="spin"></span>
+    <span>{importLabel}</span>
+  </div>
+{/if}
+
+{#if dragOver}
+  <div class="dropover">
+    <div class="dropbox">⬇ Drop to import into your library</div>
+  </div>
+{/if}
+
 <Toasts />
 
 <style>
@@ -317,4 +442,54 @@
   .row dt { color: var(--text-dim); width: 130px; flex: none; }
   .row dd { margin: 0; }
   .mono { font-family: Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .impbar {
+    position: fixed;
+    top: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    white-space: nowrap;
+    max-width: 80vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .spin {
+    flex: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-soft);
+    border-top-color: var(--accent);
+    animation: imp-spin 0.8s linear infinite;
+  }
+  @keyframes imp-spin { to { transform: rotate(360deg); } }
+  .dropover {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    pointer-events: none; /* the drop lands wherever the cursor is */
+  }
+  .dropbox {
+    border: 2px dashed var(--accent);
+    background: rgba(20, 22, 28, 0.85);
+    color: var(--accent);
+    font-size: 17px;
+    font-weight: 600;
+    padding: 26px 44px;
+    border-radius: 14px;
+  }
 </style>

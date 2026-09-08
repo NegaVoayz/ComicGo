@@ -160,6 +160,21 @@ type ScanProgress struct {
 	Path  string `json:"path"`
 }
 
+// ImportProgress is emitted while an import converts pages.
+type ImportProgress struct {
+	Done  int    `json:"done"`
+	Total int    `json:"total"` // 0 when the source order isn't pre-listable (rar)
+	Name  string `json:"name"`  // destination base name, e.g. "Vol1.cbz"
+}
+
+// ImportOutcome describes a completed import (a source converted into a .cbz).
+type ImportOutcome struct {
+	Path      string `json:"path"`
+	PageCount int    `json:"pageCount"` // pages written and verified
+	Source    string `json:"source"`
+	Kind      string `json:"kind"` // "file" | "folder"
+}
+
 // ScanJob is the handle for a (possibly running) scan.
 type ScanJob struct {
 	ID     string `json:"id"`

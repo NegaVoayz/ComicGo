@@ -130,6 +130,24 @@ export namespace model {
 	        this.url = source["url"];
 	    }
 	}
+	export class ImportOutcome {
+	    path: string;
+	    pageCount: number;
+	    source: string;
+	    kind: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportOutcome(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.pageCount = source["pageCount"];
+	        this.source = source["source"];
+	        this.kind = source["kind"];
+	    }
+	}
 	export class LayoutSection {
 	    id: string;
 	    title: string;

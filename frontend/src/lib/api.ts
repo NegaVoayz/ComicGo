@@ -78,6 +78,21 @@ export interface ScanProgress {
   path: string
 }
 
+// Payload of the "import:progress" event (emitted while an import converts
+// pages; total is 0 when the page count wasn't known up front, e.g. rar).
+export interface ImportProgress {
+  done: number
+  total: number
+  name: string // destination base name, e.g. "Vol1.cbz"
+}
+
+export interface ImportOutcome {
+  path: string
+  pageCount: number
+  source: string
+  kind: 'file' | 'folder'
+}
+
 // -- backend wrappers --
 export const listComics = (q: PageQuery) => Go.GetComics(q)
 export const countComics = (filter: string) => Go.CountComics(filter)
@@ -99,6 +114,11 @@ export const toggleFavorite = (id: number) => Go.ToggleFavorite(id)
 export const addLibrary = (dir: string) => Go.AddLibrary(dir)
 export const removeLibrary = (dir: string) => Go.RemoveLibrary(dir)
 export const pickLibrary = () => Go.PickLibrary()
+// Import entry points. A cancelled dialog resolves to an outcome with an empty
+// path (no error); a drop batch resolves to the successfully imported ones.
+export const importArchiveFile = () => Go.ImportArchive() as unknown as Promise<ImportOutcome>
+export const importImageFolder = () => Go.ImportFolder() as unknown as Promise<ImportOutcome>
+export const importDropped = (paths: string[]) => Go.ImportDropped(paths) as unknown as Promise<ImportOutcome[]>
 export const getAbout = () => Go.GetAbout()
 export const startScan = () => Go.StartScan()
 export const cancelScan = () => Go.CancelScan()

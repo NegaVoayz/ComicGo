@@ -30,6 +30,12 @@ export function GetProgress(arg1:number):Promise<model.Progress>;
 
 export function GetSettings():Promise<model.Settings>;
 
+export function ImportArchive():Promise<model.ImportOutcome>;
+
+export function ImportDropped(arg1:Array<string>):Promise<Array<model.ImportOutcome>>;
+
+export function ImportFolder():Promise<model.ImportOutcome>;
+
 export function IsScanning():Promise<boolean>;
 
 export function ListRules():Promise<Array<model.RuleInfo>>;

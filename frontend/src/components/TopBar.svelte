@@ -4,10 +4,13 @@
     scanning,
     progress,
     comics = 0,
+    importing = false,
     onAdd,
     onScan,
     onCancel,
     onRemoveRoot,
+    onImportFile,
+    onImportFolder,
     onAbout,
     onReloadLayout,
   }: {
@@ -15,15 +18,20 @@
     scanning: boolean
     progress: { done: number; total: number } | null
     comics?: number
+    importing?: boolean
     onAdd: () => void
     onScan: () => void
     onCancel: () => void
     onRemoveRoot: (dir: string) => void
+    onImportFile: () => void
+    onImportFolder: () => void
     onAbout: () => void
     onReloadLayout: () => void
   } = $props()
 
   const pct = $derived(progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0)
+
+  let showImport = $state(false)
 
   function baseName(p: string): string {
     const trimmed = p.replace(/[\\/]+$/, '')
@@ -57,6 +65,43 @@
       <span class="pct">{progress?.done ?? 0}/{progress?.total ?? 0}</span>
       <button onclick={onCancel}>Stop</button>
     {:else}
+      <div class="imp">
+        <button
+          class="import"
+          disabled={roots.length === 0 || importing}
+          title={roots.length === 0 ? 'Add a library folder first' : 'Add a new comic from a file or an image folder'}
+          onclick={() => (showImport = !showImport)}
+        >
+          {importing ? '…' : '＋ Import'}
+        </button>
+        {#if showImport}
+          <button
+            class="menu-backdrop"
+            type="button"
+            aria-label="Close import menu"
+            tabindex="-1"
+            onclick={() => (showImport = false)}
+          ></button>
+          <div class="menu">
+            <button
+              onclick={() => {
+                showImport = false
+                onImportFile()
+              }}
+            >
+              🗜️ From archive file…
+            </button>
+            <button
+              onclick={() => {
+                showImport = false
+                onImportFolder()
+              }}
+            >
+              🖼️ From image folder…
+            </button>
+          </div>
+        {/if}
+      </div>
       <button onclick={onAdd}>+ Folder</button>
       <button onclick={onScan} disabled={roots.length === 0}>Scan</button>
     {/if}
@@ -123,6 +168,50 @@
   }
   .actions { display: flex; align-items: center; gap: 6px; }
   .actions button { padding: 5px 9px; }
+  .imp {
+    position: relative;
+    display: inline-flex;
+  }
+  .import {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .import:hover:not(:disabled) { border-color: var(--accent); color: #ffe9c9; }
+  .menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: default;
+  }
+  .menu-backdrop:hover { border: none; }
+  .menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    min-width: 190px;
+  }
+  .menu button {
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 9px 14px;
+    font-size: 13px;
+  }
+  .menu button:hover { background: var(--panel-2); border: none; }
   .scanbar {
     width: 150px;
     height: 8px;
