@@ -11,6 +11,7 @@ import (
 	goruntime "runtime"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -83,8 +84,9 @@ type App struct {
 
 	pageCache *cache.LRU
 
-	// coverSem bounds concurrent cover decodes so transient memory stays low
-	// while a fresh library generates thumbnails on demand.
+	// coverSem bounds concurrent cover decodes so transient memory stays bounded
+	// while a fresh library generates thumbnails on demand. Its width is every
+	// CPU Go can use (see coverWorkers) so cold cover fills saturate the machine.
 	coverSem chan struct{}
 	coverGen atomic.Uint32
 }
@@ -100,8 +102,22 @@ func (m mediaProvider) Page(id int64, n int) ([]byte, string, error) {
 	return m.a.pageBytes(id, n)
 }
 
+// coverWorkers returns how many cover thumbnails may be decoded in parallel:
+// every CPU Go can use, so a cold library fill saturates the machine. Each
+// in-flight decode can transiently hold a full-size page in memory (up to
+// imgutil.MaxPixels, ~400 MB worst case), so on a memory-constrained machine
+// set COMICGO_COVER_WORKERS=N to cap the width without recompiling.
+func coverWorkers() int {
+	if s := os.Getenv("COMICGO_COVER_WORKERS"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			return n
+		}
+	}
+	return goruntime.GOMAXPROCS(0)
+}
+
 func NewApp() *App {
-	return &App{metasDirty: true, pageCache: cache.NewLRU(8 << 20), coverSem: make(chan struct{}, 2)}
+	return &App{metasDirty: true, pageCache: cache.NewLRU(8 << 20), coverSem: make(chan struct{}, coverWorkers())}
 }
 
 // dbg appends one line to <appdir>/tmp/debug.log when COMICGO_DEBUG=1.
