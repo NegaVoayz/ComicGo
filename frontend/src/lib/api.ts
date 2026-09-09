@@ -83,7 +83,7 @@ export interface ScanProgress {
 export interface ImportProgress {
   done: number
   total: number
-  name: string // destination base name, e.g. "Vol1.cbz"
+  name: string // destination base name, e.g. "Vol1.zip"
 }
 
 export interface ImportOutcome {

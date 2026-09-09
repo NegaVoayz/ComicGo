@@ -75,7 +75,7 @@ func writeTar(t *testing.T, path string, gz bool, entries []struct {
 	}
 }
 
-// pageData returns the decoded content of page n (0-based) of a produced cbz.
+// pageData returns the decoded content of page n (0-based) of a produced archive.
 func pageData(t *testing.T, cbz string, n int) string {
 	t.Helper()
 	ar, err := comic.Open(cbz)
@@ -126,7 +126,7 @@ func TestZipRoundtrip(t *testing.T) {
 	src := filepath.Join(dir, "src.cbz")
 	writeZip(t, src, scrambledEntries())
 
-	dest := filepath.Join(dir, "out.cbz")
+	dest := filepath.Join(dir, "out.zip")
 	n, err := Import(context.Background(), Options{Source: src, Dest: dest})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
@@ -169,7 +169,7 @@ func TestFolderImport(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	dest := filepath.Join(dir, "album.cbz")
+	dest := filepath.Join(dir, "album.zip")
 	if _, err := Import(context.Background(), Options{Source: folder, Dest: dest}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestTarRoundtrips(t *testing.T) {
 				src = filepath.Join(dir, "src.tar")
 			}
 			writeTar(t, src, gz, rev)
-			dest := filepath.Join(dir, "out.cbz")
+			dest := filepath.Join(dir, "out.zip")
 			if _, err := Import(context.Background(), Options{Source: src, Dest: dest}); err != nil {
 				t.Fatalf("Import: %v", err)
 			}
@@ -236,15 +236,15 @@ func TestDesiredName(t *testing.T) {
 		isDir  bool
 		want   string
 	}{
-		{"C:\\comics\\Vol.1.cbr", false, "Vol.1.cbz"},
-		{"C:\\comics\\x.tar.gz", false, "x.cbz"},
-		{"C:\\comics\\y.tar", false, "y.cbz"},
-		{"C:\\comics\\z.tgz", false, "z.cbz"},
-		{"C:\\comics\\a.cbz", false, "a.cbz"},
-		{"C:\\comics\\b.zip", false, "b.cbz"},
-		{"C:\\comics\\c.7z", false, "c.cbz"},
-		{"C:\\comics\\Some Folder", true, "Some Folder.cbz"},
-		{"C:\\comics\\noext", false, "noext.cbz"},
+		{"C:\\comics\\Vol.1.cbr", false, "Vol.1.zip"},
+		{"C:\\comics\\x.tar.gz", false, "x.zip"},
+		{"C:\\comics\\y.tar", false, "y.zip"},
+		{"C:\\comics\\z.tgz", false, "z.zip"},
+		{"C:\\comics\\a.cbz", false, "a.zip"},
+		{"C:\\comics\\b.zip", false, "b.zip"},
+		{"C:\\comics\\c.7z", false, "c.zip"},
+		{"C:\\comics\\Some Folder", true, "Some Folder.zip"},
+		{"C:\\comics\\noext", false, "noext.zip"},
 	}
 	for _, c := range cases {
 		if got := DesiredName(c.source, c.isDir); got != c.want {
@@ -256,26 +256,26 @@ func TestDesiredName(t *testing.T) {
 func TestUniqueDest(t *testing.T) {
 	dir := t.TempDir()
 	// Not taken yet: returns the requested name verbatim.
-	first := UniqueDest(dir, "Vol 1.cbz")
-	if filepath.Base(first) != "Vol 1.cbz" {
+	first := UniqueDest(dir, "Vol 1.zip")
+	if filepath.Base(first) != "Vol 1.zip" {
 		t.Fatalf("fresh dest = %q", first)
 	}
-	// Case-insensitive collision: "vol 1.cbz" already exists.
-	low := filepath.Join(dir, "vol 1.cbz")
+	// Case-insensitive collision: "vol 1.zip" already exists.
+	low := filepath.Join(dir, "vol 1.zip")
 	if err := os.WriteFile(low, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	second := UniqueDest(dir, "Vol 1.cbz")
-	if filepath.Base(second) != "Vol 1 (2).cbz" {
-		t.Fatalf("collision dest = %q, want Vol 1 (2).cbz", second)
+	second := UniqueDest(dir, "Vol 1.zip")
+	if filepath.Base(second) != "Vol 1 (2).zip" {
+		t.Fatalf("collision dest = %q, want Vol 1 (2).zip", second)
 	}
 	// And a further collision steps to (3).
 	if err := os.WriteFile(second, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	third := UniqueDest(dir, "Vol 1.cbz")
-	if filepath.Base(third) != "Vol 1 (3).cbz" {
-		t.Fatalf("second collision dest = %q, want Vol 1 (3).cbz", third)
+	third := UniqueDest(dir, "Vol 1.zip")
+	if filepath.Base(third) != "Vol 1 (3).zip" {
+		t.Fatalf("second collision dest = %q, want Vol 1 (3).zip", third)
 	}
 }
 
@@ -311,7 +311,7 @@ func TestNoImageSourceFailsAndCleansUp(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(folder, "a.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d1 := filepath.Join(dir, "empty-folder.cbz")
+	d1 := filepath.Join(dir, "empty-folder.zip")
 	if _, err := Import(context.Background(), Options{Source: folder, Dest: d1}); err == nil {
 		t.Fatal("expected error for image-less folder")
 	}
@@ -324,7 +324,7 @@ func TestNoImageSourceFailsAndCleansUp(t *testing.T) {
 		name string
 		data string
 	}{{"readme.txt", "x"}})
-	d2 := filepath.Join(dir, "noimg-out.cbz")
+	d2 := filepath.Join(dir, "noimg-out.zip")
 	if _, err := Import(context.Background(), Options{Source: zipPath, Dest: d2}); err == nil {
 		t.Fatal("expected error for image-less zip")
 	}
@@ -339,7 +339,7 @@ func TestUnsupportedSource(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Import(context.Background(), Options{Source: bad, Dest: filepath.Join(dir, "o.cbz")}); err == nil {
+	if _, err := Import(context.Background(), Options{Source: bad, Dest: filepath.Join(dir, "o.zip")}); err == nil {
 		t.Fatal("expected unsupported-source error")
 	}
 }
@@ -348,7 +348,7 @@ func TestOutputStoreMethodAndUTF8(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.cbz")
 	writeZip(t, src, scrambledEntries())
-	dest := filepath.Join(dir, "out.cbz")
+	dest := filepath.Join(dir, "out.zip")
 	if _, err := Import(context.Background(), Options{Source: src, Dest: dest}); err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestProgressEvents(t *testing.T) {
 	var d []int
 	_, err := Import(context.Background(), Options{
 		Source: src,
-		Dest:   filepath.Join(dir, "out.cbz"),
+		Dest:   filepath.Join(dir, "out.zip"),
 		OnProgress: func(done, total int) {
 			d = append(d, done)
 		},

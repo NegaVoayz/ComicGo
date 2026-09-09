@@ -173,10 +173,10 @@ type ScanProgress struct {
 type ImportProgress struct {
 	Done  int    `json:"done"`
 	Total int    `json:"total"` // 0 when the source order isn't pre-listable (rar)
-	Name  string `json:"name"`  // destination base name, e.g. "Vol1.cbz"
+	Name  string `json:"name"`  // destination base name, e.g. "Vol1.zip"
 }
 
-// ImportOutcome describes a completed import (a source converted into a .cbz).
+// ImportOutcome describes a completed import (a source converted into a .zip).
 type ImportOutcome struct {
 	Path      string `json:"path"`
 	PageCount int    `json:"pageCount"` // pages written and verified

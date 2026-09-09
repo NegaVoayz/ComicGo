@@ -11,21 +11,21 @@ import (
 )
 
 // archiveSuffixes lists known archive extensions, longest first, so DesiredName
-// strips the whole recognized suffix ("x.tar.gz" -> "x.cbz", not "x.tar").
+// strips the whole recognized suffix ("x.tar.gz" -> "x.zip", not "x.tar").
 var archiveSuffixes = []string{
 	".tar.gz", ".tar", ".tgz",
 	".cbz", ".cbr", ".cb7",
 	".zip", ".rar", ".7z",
 }
 
-// DesiredName returns the base .cbz filename to create for a source: an image
+// DesiredName returns the base .zip filename to create for a source: an image
 // folder keeps its own name; an archive keeps its name with the recognized
-// archive suffix replaced by ".cbz" (e.g. "Vol.1.cbr" -> "Vol.1.cbz").
+// archive suffix replaced by ".zip" (e.g. "Vol.1.cbr" -> "Vol.1.zip").
 func DesiredName(source string, isDir bool) string {
-	return DesiredStem(source, isDir) + ".cbz"
+	return DesiredStem(source, isDir) + ".zip"
 }
 
-// DesiredStem returns DesiredName's filename without the ".cbz" extension: the
+// DesiredStem returns DesiredName's filename without the ".zip" extension: the
 // folder's own name, or the archive name stripped of its recognized suffix.
 func DesiredStem(source string, isDir bool) string {
 	base := filepath.Base(strings.TrimRight(source, `/\`))
@@ -47,10 +47,10 @@ func DesiredStem(source string, isDir bool) string {
 
 // UniqueDest returns the first path in dir that does not already exist for the
 // requested base name. On a collision it appends " (2)", " (3)", ... before the
-// ".cbz" extension. Comparison is case-insensitive, matching how the Windows
+// file extension. Comparison is case-insensitive, matching how the Windows
 // filesystem treats "A.cbz" and "a.cbz" as the same file.
 func UniqueDest(dir, base string) string {
-	ext := filepath.Ext(base) // ".cbz"
+	ext := filepath.Ext(base) // e.g. ".zip" or ".cbz"
 	stem := strings.TrimSuffix(base, ext)
 	lower := map[string]bool{}
 	if entries, err := os.ReadDir(dir); err == nil {

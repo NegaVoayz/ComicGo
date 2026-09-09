@@ -7,7 +7,7 @@ package importer
 //	COMICGO_TEST_CBR=<path to a .cbr/.rar>
 //	COMICGO_TEST_CB7=<path to a .cb7/.7z>
 //
-// Each asserts the produced .cbz opens with comic.Open and has > 0 pages.
+// Each asserts the produced .zip opens with comic.Open and has > 0 pages.
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func TestReal7Z(t *testing.T) {
 
 func runRealImport(t *testing.T, src string) {
 	t.Helper()
-	dest := filepath.Join(t.TempDir(), "out.cbz")
+	dest := filepath.Join(t.TempDir(), "out.zip")
 	n, err := Import(context.Background(), Options{Source: src, Dest: dest})
 	if err != nil {
 		t.Fatalf("Import(%s): %v", src, err)

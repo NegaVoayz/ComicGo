@@ -1,5 +1,5 @@
 // Package importer converts any supported comic source (an archive file or an
-// image folder) into a flat .cbz. Every page is streamed straight into the
+// image folder) into a flat .zip. Every page is streamed straight into the
 // output zip with the Store method (no re-compression), so memory stays
 // bounded however large the source. Import is non-destructive: the source is
 // never modified.
@@ -27,7 +27,7 @@ import (
 // Options configures one conversion.
 type Options struct {
 	Source string // archive path or image folder to read
-	Dest   string // full destination .cbz path (must already be unique)
+	Dest   string // full destination .zip path (must already be unique)
 	// Comment is written into the destination archive as its zip comment
 	// (the "Key=Value" metadata format ComicGo reads). Empty for none.
 	Comment string
@@ -39,7 +39,7 @@ type Options struct {
 
 // Import converts Source into Dest and returns the number of pages written.
 // Dest is verified with comic.Open before returning. On any error the partial
-// Dest file is removed, so a failed import never leaves a broken .cbz behind.
+// Dest file is removed, so a failed import never leaves a broken .zip behind.
 func Import(ctx context.Context, o Options) (int, error) {
 	if o.Source == "" || o.Dest == "" {
 		return 0, errors.New("importer: Source and Dest are required")

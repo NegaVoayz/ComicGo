@@ -266,7 +266,7 @@ func (a *App) RemoveLibrary(dir string) error {
 // ---- comic import ----
 
 // ImportArchive opens a file dialog for a supported comic archive, converts it
-// to a .cbz inside a library root and rescans so it appears on the shelf. A
+// to a .zip inside a library root and rescans so it appears on the shelf. A
 // cancelled dialog returns an empty outcome with no error.
 func (a *App) ImportArchive() (model.ImportOutcome, error) {
 	if a.ctx == nil {
@@ -296,7 +296,7 @@ func (a *App) ImportArchive() (model.ImportOutcome, error) {
 }
 
 // ImportFolder opens a directory dialog for a folder of pictures, converts it
-// to a .cbz inside a library root and rescans so it appears on the shelf. A
+// to a .zip inside a library root and rescans so it appears on the shelf. A
 // cancelled dialog returns an empty outcome with no error.
 func (a *App) ImportFolder() (model.ImportOutcome, error) {
 	if a.ctx == nil {
@@ -330,7 +330,7 @@ func (a *App) ImportDropped(paths []string) ([]model.ImportOutcome, error) {
 }
 
 // runImports converts every source path (a supported archive file or an image
-// folder) into its own .cbz under one destination directory, then triggers a
+// folder) into its own .zip under one destination directory, then triggers a
 // scan. Returns the outcomes of the imports that succeeded; a non-nil error
 // reports items that failed (or that nothing was importable).
 func (a *App) runImports(sources []string) ([]model.ImportOutcome, error) {
@@ -368,14 +368,14 @@ func (a *App) runImports(sources []string) ([]model.ImportOutcome, error) {
 		}
 		return nil, errors.New("nothing to import: drop comic archives or image folders")
 	}
-	a.startScan() // the new .cbz files are now complete; index them
+	a.startScan() // the new .zip files are now complete; index them
 	if len(failures) > 0 {
 		return imported, errors.New(strings.Join(failures, "; "))
 	}
 	return imported, nil
 }
 
-// importOne converts a single source into a unique .cbz under destDir, emitting
+// importOne converts a single source into a unique .zip under destDir, emitting
 // import:progress events while it streams. Returns (nil, nil) for a source this
 // app cannot import (a missing path or a file that is not an archive), so batch
 // drops can skip such noise without failing the rest.
@@ -391,16 +391,16 @@ func (a *App) importOne(source, destDir string) (*model.ImportOutcome, error) {
 	if !isDir && !isImportableExt(source) {
 		return nil, nil // not an archive we read; skip silently
 	}
-	// A "brace" source name ({Author...} Title {Tag...}) becomes a .cbz named
+	// A "brace" source name ({Author...} Title {Tag...}) becomes a .zip named
 	// after the clean title, with the parsed metadata written into the archive
 	// comment (Title/Author/Genre) so the shelf shows author + tag chips and tag
 	// search works. Plain names import unchanged (no comment).
 	stem := importer.DesiredStem(source, isDir)
 	title, author, tags := importer.ParseName(stem)
-	base := stem + ".cbz"
+	base := stem + ".zip"
 	comment := ""
 	if title != "" && (author != "" || len(tags) > 0) {
-		base = title + ".cbz"
+		base = title + ".zip"
 		comment = importer.BuildComment(title, author, tags)
 	}
 	dest := importer.UniqueDest(destDir, base)
@@ -435,7 +435,7 @@ func isImportableExt(path string) bool {
 }
 
 // resolveImportDir applies the import destination rule: with a single library
-// root the converted .cbz goes straight into it; with several roots the user
+// root the converted .zip goes straight into it; with several roots the user
 // picks a subfolder (defaulting to the first root) and only a folder inside a
 // configured root is accepted. A cancelled picker returns errImportCancelled.
 func (a *App) resolveImportDir() (string, error) {

@@ -66,7 +66,7 @@ func TestBuildComment(t *testing.T) {
 	}
 }
 
-// A bracket-styled name parsed for metadata should produce a .cbz named after
+// A bracket-styled name parsed for metadata should produce a .zip named after
 // the clean title and whose comment round-trips through comic.Open.
 func TestImportWithComment(t *testing.T) {
 	dir := t.TempDir()
@@ -82,7 +82,7 @@ func TestImportWithComment(t *testing.T) {
 	stem := DesiredStem(folder, true) // folder import: name kept as-is, no .zip strip
 	title, author, tags := ParseName(stem)
 	comment := BuildComment(title, author, tags)
-	wantName := title + ".cbz"
+	wantName := title + ".zip"
 
 	dest := filepath.Join(dir, wantName)
 	if _, err := Import(context.Background(), Options{Source: folder, Dest: dest, Comment: comment}); err != nil {
