@@ -341,18 +341,19 @@ func TestChromeActionTracksMaximizedState(t *testing.T) {
 	}
 }
 
-func TestRestoreGlyphUsesTwoClosedOverlappingRects(t *testing.T) {
-	back, front := captionRestoreRects(20, 20, 6)
-	for name, rect := range map[string]image.Rectangle{"back": back, "front": front} {
-		if rect.Empty() || rect.Dx() != rect.Dy() {
-			t.Fatalf("%s restore rectangle = %v; want a non-empty square", name, rect)
-		}
+func TestRestoreGlyphMatchesWindowsGeometry(t *testing.T) {
+	geometry := captionRestoreGeometry(20, 20, 6)
+	if geometry.Square.Empty() || geometry.Square.Dx() != geometry.Square.Dy() {
+		t.Fatalf("restore square = %v; want a non-empty square", geometry.Square)
 	}
-	if back.Intersect(front).Empty() {
-		t.Fatal("restore glyph rectangles do not overlap")
+	if geometry.Radius <= 0 || geometry.Radius*2 >= geometry.Square.Dx() {
+		t.Fatalf("restore square radius = %d for size %v", geometry.Radius, geometry.Square.Size())
 	}
-	if back == front {
-		t.Fatal("restore glyph rectangles must be offset")
+	if geometry.BracketCorner.X <= geometry.Square.Max.X || geometry.BracketCorner.Y >= geometry.Square.Min.Y {
+		t.Fatalf("restore bracket corner %v is not outside the square top-right", geometry.BracketCorner)
+	}
+	if geometry.BracketStart.Y != geometry.BracketCorner.Y || geometry.BracketEnd.X != geometry.BracketCorner.X {
+		t.Fatalf("restore bracket is not a right angle: %+v", geometry)
 	}
 }
 

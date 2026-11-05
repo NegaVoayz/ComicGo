@@ -241,9 +241,11 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy)))
 	case chromeMaximize:
 		if maximized {
-			back, front := captionRestoreRects(cx, cy, glyph)
-			addRectPath(&path, back)
-			addRectPath(&path, front)
+			geometry := captionRestoreGeometry(cx, cy, glyph)
+			path.MoveTo(f32.Pt(float32(geometry.BracketStart.X), float32(geometry.BracketStart.Y)))
+			path.LineTo(f32.Pt(float32(geometry.BracketCorner.X), float32(geometry.BracketCorner.Y)))
+			path.LineTo(f32.Pt(float32(geometry.BracketEnd.X), float32(geometry.BracketEnd.Y)))
+			addRoundedRectPath(&path, geometry.Square, geometry.Radius)
 		} else {
 			addRectPath(&path, image.Rect(cx-glyph, cy-glyph, cx+glyph, cy+glyph))
 		}
@@ -256,11 +258,28 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 	paint.FillShape(ops, col, clip.Stroke{Path: path.End(), Width: 1}.Op())
 }
 
-func captionRestoreRects(cx, cy, half int) (image.Rectangle, image.Rectangle) {
-	inset := maxInt(2, half-2)
-	back := image.Rect(cx-inset, cy-half, cx+half, cy+inset)
-	front := image.Rect(cx-half, cy-inset, cx+inset, cy+half)
-	return back, front
+type restoreGlyphGeometry struct {
+	Square        image.Rectangle
+	Radius        int
+	BracketStart  image.Point
+	BracketCorner image.Point
+	BracketEnd    image.Point
+}
+
+func captionRestoreGeometry(cx, cy, half int) restoreGlyphGeometry {
+	side := 2*half - 2
+	squareCenter := image.Pt(cx-1, cy+1)
+	square := image.Rectangle{
+		Min: squareCenter.Sub(image.Pt(side/2, side/2)),
+		Max: image.Pt(squareCenter.X-side/2+side, squareCenter.Y-side/2+side),
+	}
+	return restoreGlyphGeometry{
+		Square:        square,
+		Radius:        maxInt(1, half/4),
+		BracketStart:  image.Pt(cx-half/2, cy-half),
+		BracketCorner: image.Pt(cx+half, cy-half),
+		BracketEnd:    image.Pt(cx+half, cy+half/2),
+	}
 }
 
 func addRectPath(path *clip.Path, rect image.Rectangle) {
@@ -268,5 +287,35 @@ func addRectPath(path *clip.Path, rect image.Rectangle) {
 	path.LineTo(f32.Pt(float32(rect.Max.X), float32(rect.Min.Y)))
 	path.LineTo(f32.Pt(float32(rect.Max.X), float32(rect.Max.Y)))
 	path.LineTo(f32.Pt(float32(rect.Min.X), float32(rect.Max.Y)))
+	path.Close()
+}
+
+func addRoundedRectPath(path *clip.Path, rect image.Rectangle, radius int) {
+	if radius <= 0 {
+		addRectPath(path, rect)
+		return
+	}
+	r := minInt(radius, minInt(rect.Dx(), rect.Dy())/2)
+	path.MoveTo(f32.Pt(float32(rect.Min.X+r), float32(rect.Min.Y)))
+	path.LineTo(f32.Pt(float32(rect.Max.X-r), float32(rect.Min.Y)))
+	path.QuadTo(
+		f32.Pt(float32(rect.Max.X), float32(rect.Min.Y)),
+		f32.Pt(float32(rect.Max.X), float32(rect.Min.Y+r)),
+	)
+	path.LineTo(f32.Pt(float32(rect.Max.X), float32(rect.Max.Y-r)))
+	path.QuadTo(
+		f32.Pt(float32(rect.Max.X), float32(rect.Max.Y)),
+		f32.Pt(float32(rect.Max.X-r), float32(rect.Max.Y)),
+	)
+	path.LineTo(f32.Pt(float32(rect.Min.X+r), float32(rect.Max.Y)))
+	path.QuadTo(
+		f32.Pt(float32(rect.Min.X), float32(rect.Max.Y)),
+		f32.Pt(float32(rect.Min.X), float32(rect.Max.Y-r)),
+	)
+	path.LineTo(f32.Pt(float32(rect.Min.X), float32(rect.Min.Y+r)))
+	path.QuadTo(
+		f32.Pt(float32(rect.Min.X), float32(rect.Min.Y)),
+		f32.Pt(float32(rect.Min.X+r), float32(rect.Min.Y)),
+	)
 	path.Close()
 }
