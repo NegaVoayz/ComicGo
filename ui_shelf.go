@@ -43,8 +43,9 @@ type sectionState struct {
 	lastSearch  string
 	filterClick widget.Clickable
 	sortClick   widget.Clickable
+	filterWidth int
+	sortWidth   int
 	menuKind    string
-	menuClose   widget.Clickable
 	menuClicks  []widget.Clickable
 	tagClicks   []widget.Clickable
 	clearTags   widget.Clickable
@@ -89,12 +90,6 @@ func (u *appUI) resetSections() {
 
 func (u *appUI) layoutShelf(gtx layout.Context) {
 	u.layoutShelfBase(gtx)
-	for _, s := range u.sections {
-		if s.menuKind != "" {
-			u.layoutRuleMenu(gtx, s)
-			break
-		}
-	}
 }
 
 func (u *appUI) layoutShelfBody(gtx layout.Context) layout.Dimensions {
@@ -176,11 +171,12 @@ func (u *appUI) layoutSection(gtx layout.Context, s *sectionState, viewportH int
 		return layout.Dimensions{}
 	}
 	if s.filterClick.Clicked(gtx) {
-		s.openRuleMenu("filter")
+		u.toggleRuleMenu(s, "filter")
 	}
 	if s.sortClick.Clicked(gtx) {
-		s.openRuleMenu("sort")
+		u.toggleRuleMenu(s, "sort")
 	}
+	u.handleRuleMenu(gtx, s)
 	text := s.search.Text()
 	if text != s.lastSearch {
 		s.lastSearch = text
@@ -231,27 +227,41 @@ func (u *appUI) layoutSectionHeader(gtx layout.Context, s *sectionState) layout.
 			}
 		}
 	}
-	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle, Gap: 12}.Layout(gtx,
+	children := []layout.FlexChild{
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Baseline, Gap: 8}.Layout(gtx,
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle, Gap: 12}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return u.labelColor(gtx, s.Title, unit.Sp(16), colText, 1, font.Bold)
+					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Baseline, Gap: 8}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return u.labelColor(gtx, s.Title, unit.Sp(16), colText, 1, font.Bold)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return u.label(gtx, strconv.Itoa(s.total), unit.Sp(12), colDim, 1)
+						}),
+					)
+				}),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					return u.editor(gtx, &s.search, "Search this section...", 35)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return u.label(gtx, strconv.Itoa(s.total), unit.Sp(12), colDim, 1)
+					dims := u.button(gtx, &s.filterClick, filterLabel, buttonStyle{primary: s.menuKind == "filter"})
+					s.filterWidth = dims.Size.X
+					return dims
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					dims := u.button(gtx, &s.sortClick, sortLabel, buttonStyle{primary: s.menuKind == "sort"})
+					s.sortWidth = dims.Size.X
+					return dims
 				}),
 			)
 		}),
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return u.editor(gtx, &s.search, "Search this section...", 35)
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.button(gtx, &s.filterClick, filterLabel, buttonStyle{})
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.button(gtx, &s.sortClick, sortLabel, buttonStyle{})
-		}),
-	)
+	}
+	if s.menuKind != "" {
+		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.layoutRuleDropdown(gtx, s)
+		}))
+	}
+	return layout.Flex{Axis: layout.Vertical, Gap: 5}.Layout(gtx, children...)
 }
 
 func (u *appUI) layoutTagBar(gtx layout.Context, s *sectionState) layout.Dimensions {
@@ -652,12 +662,19 @@ func (u *appUI) requestSectionCount(index int) {
 	}()
 }
 
-func (s *sectionState) openRuleMenu(kind string) {
+func (u *appUI) toggleRuleMenu(s *sectionState, kind string) {
+	if s.menuKind == kind {
+		s.menuKind = ""
+		return
+	}
+	for _, other := range u.sections {
+		other.menuKind = ""
+	}
 	s.menuKind = kind
 	s.menuClicks = nil
 }
 
-func (u *appUI) layoutRuleMenu(gtx layout.Context, s *sectionState) {
+func (u *appUI) ruleOptions(s *sectionState) []model.RuleInfo {
 	options := []model.RuleInfo{{ID: "", Label: "All"}}
 	if s.menuKind == "sort" {
 		options = []model.RuleInfo{{ID: "", Label: "Default"}}
@@ -665,12 +682,16 @@ func (u *appUI) layoutRuleMenu(gtx layout.Context, s *sectionState) {
 	} else {
 		options = append(options, u.filterRules...)
 	}
+	return options
+}
+
+func (u *appUI) handleRuleMenu(gtx layout.Context, s *sectionState) {
+	if s.menuKind == "" {
+		return
+	}
+	options := u.ruleOptions(s)
 	if len(s.menuClicks) != len(options) {
 		s.menuClicks = make([]widget.Clickable, len(options))
-	}
-	if s.menuClose.Clicked(gtx) {
-		s.menuKind = ""
-		return
 	}
 	for i := range options {
 		if s.menuClicks[i].Clicked(gtx) {
@@ -684,36 +705,54 @@ func (u *appUI) layoutRuleMenu(gtx layout.Context, s *sectionState) {
 			return
 		}
 	}
-	layout.Stack{Alignment: layout.Center}.Layout(gtx,
-		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-			paint.Fill(gtx.Ops, colBlack50)
-			return s.menuClose.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return layout.Dimensions{Size: gtx.Constraints.Max}
-			})
+}
+
+func (u *appUI) layoutRuleDropdown(gtx layout.Context, s *sectionState) layout.Dimensions {
+	options := u.ruleOptions(s)
+	if len(s.menuClicks) != len(options) {
+		s.menuClicks = make([]widget.Clickable, len(options))
+	}
+	right := 0
+	if s.menuKind == "filter" {
+		right = s.sortWidth + gtx.Dp(unit.Dp(12))
+	}
+	return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return layout.Dimensions{Size: gtx.Constraints.Min}
 		}),
-		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return u.modal(gtx, unit.Dp(460), func(gtx layout.Context) layout.Dimensions {
-					children := []layout.FlexChild{
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							title := "Filter"
-							if s.menuKind == "sort" {
-								title = "Sort"
-							}
-							return u.labelColor(gtx, title, unit.Sp(18), colText, 1, font.Bold)
-						}),
-					}
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Right: unit.Dp(float32(right) / gtx.Metric.PxPerDp)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return u.panel(gtx, unit.Dp(240), func(gtx layout.Context) layout.Dimensions {
+					children := make([]layout.FlexChild, 0, len(options))
 					for i, option := range options {
 						i := i
+						selected := s.FilterRuleID == option.ID
+						if s.menuKind == "sort" {
+							selected = s.SortRuleID == option.ID
+						}
 						children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.button(gtx, &s.menuClicks[i], option.Label, buttonStyle{plain: true})
+							style := buttonStyle{plain: true}
+							if selected {
+								style = buttonStyle{primary: true}
+							}
+							return u.button(gtx, &s.menuClicks[i], option.Label, style)
 						}))
 					}
-					return layout.Flex{Axis: layout.Vertical, Gap: 5}.Layout(gtx, children...)
+					return layout.Flex{Axis: layout.Vertical, Gap: 2}.Layout(gtx, children...)
 				})
 			})
 		}),
 	)
+}
+
+func (u *appUI) closeRuleMenu() bool {
+	for _, s := range u.sections {
+		if s.menuKind != "" {
+			s.menuKind = ""
+			return true
+		}
+	}
+	return false
 }
 
 func (u *appUI) layoutSectionError(gtx layout.Context, section model.LayoutSection) layout.Dimensions {

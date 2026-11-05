@@ -82,3 +82,18 @@ func TestStatsCardRendererRegistered(t *testing.T) {
 		t.Fatal("stats Gio renderer is not registered")
 	}
 }
+
+func TestRuleMenusAreExclusiveAndToggleClosed(t *testing.T) {
+	first := &sectionState{menuKind: "filter"}
+	second := &sectionState{}
+	u := &appUI{sections: []*sectionState{first, second}}
+
+	u.toggleRuleMenu(second, "sort")
+	if first.menuKind != "" || second.menuKind != "sort" {
+		t.Fatalf("open menus = %q, %q; want empty, sort", first.menuKind, second.menuKind)
+	}
+	u.toggleRuleMenu(second, "sort")
+	if second.menuKind != "" {
+		t.Fatalf("sort menu remained open after toggle: %q", second.menuKind)
+	}
+}

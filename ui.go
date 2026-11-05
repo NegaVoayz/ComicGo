@@ -872,6 +872,8 @@ func (u *appUI) handleKey(ev key.Event) {
 			u.aboutOpen = false
 		case u.importMenu:
 			u.importMenu = false
+		case u.closeRuleMenu():
+			// The filter or sort dropdown consumed Escape.
 		case u.screen == screenDetail:
 			u.screen = screenShelf
 		}
