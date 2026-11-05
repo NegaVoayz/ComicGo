@@ -14,6 +14,7 @@ import (
 	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
@@ -43,9 +44,10 @@ type sectionState struct {
 	lastSearch  string
 	filterClick widget.Clickable
 	sortClick   widget.Clickable
-	filterWidth int
 	sortWidth   int
 	menuKind    string
+	menuAnchor  image.Point
+	menuClose   widget.Clickable
 	menuClicks  []widget.Clickable
 	tagClicks   []widget.Clickable
 	clearTags   widget.Clickable
@@ -90,6 +92,7 @@ func (u *appUI) resetSections() {
 
 func (u *appUI) layoutShelf(gtx layout.Context) {
 	u.layoutShelfBase(gtx)
+	u.layoutRuleOverlay(gtx)
 }
 
 func (u *appUI) layoutShelfBody(gtx layout.Context) layout.Dimensions {
@@ -171,10 +174,10 @@ func (u *appUI) layoutSection(gtx layout.Context, s *sectionState, viewportH int
 		return layout.Dimensions{}
 	}
 	if s.filterClick.Clicked(gtx) {
-		u.toggleRuleMenu(s, "filter")
+		u.toggleRuleMenu(s, "filter", u.press.position)
 	}
 	if s.sortClick.Clicked(gtx) {
-		u.toggleRuleMenu(s, "sort")
+		u.toggleRuleMenu(s, "sort", u.press.position)
 	}
 	u.handleRuleMenu(gtx, s)
 	text := s.search.Text()
@@ -244,9 +247,7 @@ func (u *appUI) layoutSectionHeader(gtx layout.Context, s *sectionState) layout.
 					return u.editor(gtx, &s.search, "Search this section...", 35)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					dims := u.button(gtx, &s.filterClick, filterLabel, buttonStyle{primary: s.menuKind == "filter"})
-					s.filterWidth = dims.Size.X
-					return dims
+					return u.button(gtx, &s.filterClick, filterLabel, buttonStyle{primary: s.menuKind == "filter"})
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					dims := u.button(gtx, &s.sortClick, sortLabel, buttonStyle{primary: s.menuKind == "sort"})
@@ -255,11 +256,6 @@ func (u *appUI) layoutSectionHeader(gtx layout.Context, s *sectionState) layout.
 				}),
 			)
 		}),
-	}
-	if s.menuKind != "" {
-		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.layoutRuleDropdown(gtx, s)
-		}))
 	}
 	return layout.Flex{Axis: layout.Vertical, Gap: 5}.Layout(gtx, children...)
 }
@@ -662,7 +658,7 @@ func (u *appUI) requestSectionCount(index int) {
 	}()
 }
 
-func (u *appUI) toggleRuleMenu(s *sectionState, kind string) {
+func (u *appUI) toggleRuleMenu(s *sectionState, kind string, anchor image.Point) {
 	if s.menuKind == kind {
 		s.menuKind = ""
 		return
@@ -671,6 +667,7 @@ func (u *appUI) toggleRuleMenu(s *sectionState, kind string) {
 		other.menuKind = ""
 	}
 	s.menuKind = kind
+	s.menuAnchor = anchor
 	s.menuClicks = nil
 }
 
@@ -707,42 +704,92 @@ func (u *appUI) handleRuleMenu(gtx layout.Context, s *sectionState) {
 	}
 }
 
-func (u *appUI) layoutRuleDropdown(gtx layout.Context, s *sectionState) layout.Dimensions {
+func (u *appUI) openRuleSection() *sectionState {
+	for _, s := range u.sections {
+		if s.menuKind != "" {
+			return s
+		}
+	}
+	return nil
+}
+
+func (u *appUI) layoutRuleOverlay(gtx layout.Context) {
+	s := u.openRuleSection()
+	if s == nil {
+		return
+	}
 	options := u.ruleOptions(s)
 	if len(s.menuClicks) != len(options) {
 		s.menuClicks = make([]widget.Clickable, len(options))
 	}
-	right := 0
-	if s.menuKind == "filter" {
-		right = s.sortWidth + gtx.Dp(unit.Dp(12))
+	if s.menuClose.Clicked(gtx) {
+		s.menuKind = ""
+		return
 	}
-	return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return layout.Dimensions{Size: gtx.Constraints.Min}
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Right: unit.Dp(float32(right) / gtx.Metric.PxPerDp)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return u.panel(gtx, unit.Dp(240), func(gtx layout.Context) layout.Dimensions {
-					children := make([]layout.FlexChild, 0, len(options))
-					for i, option := range options {
-						i := i
-						selected := s.FilterRuleID == option.ID
-						if s.menuKind == "sort" {
-							selected = s.SortRuleID == option.ID
-						}
-						children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							style := buttonStyle{plain: true}
-							if selected {
-								style = buttonStyle{primary: true}
-							}
-							return u.button(gtx, &s.menuClicks[i], option.Label, style)
-						}))
-					}
-					return layout.Flex{Axis: layout.Vertical, Gap: 2}.Layout(gtx, children...)
-				})
-			})
-		}),
-	)
+
+	menuWidth := u.ruleMenuWidth(gtx, options)
+	macro := op.Record(gtx.Ops)
+	menuDims := u.layoutRuleMenuPanel(gtx, s, options, menuWidth)
+	menu := macro.Stop()
+	right := gtx.Constraints.Max.X - gtx.Dp(unit.Dp(18))
+	if s.menuKind == "filter" {
+		right = gtx.Constraints.Max.X - gtx.Dp(unit.Dp(18)) - s.sortWidth - gtx.Dp(unit.Dp(12))
+	}
+	top := s.menuAnchor.Y + gtx.Dp(unit.Dp(18))
+	if !s.menuAnchorValid(gtx) {
+		top = gtx.Dp(unit.Dp(52 + 14 + 35))
+	}
+	x := maxInt(gtx.Dp(unit.Dp(8)), right-menuDims.Size.X)
+	y := maxInt(gtx.Dp(unit.Dp(52)), top)
+	if y+menuDims.Size.Y > gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8)) {
+		y = maxInt(gtx.Dp(unit.Dp(52)), gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8))-menuDims.Size.Y)
+	}
+	s.menuClose.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: gtx.Constraints.Max}
+	})
+	defer op.Offset(image.Pt(x, y)).Push(gtx.Ops).Pop()
+	menu.Add(gtx.Ops)
+}
+
+func (u *appUI) ruleMenuWidth(gtx layout.Context, options []model.RuleInfo) int {
+	maxLabel := 0
+	for _, option := range options {
+		mgtx := gtx
+		mgtx.Constraints.Min = image.Point{}
+		mgtx.Constraints.Max.X = mgtx.Dp(unit.Dp(320))
+		macro := op.Record(gtx.Ops)
+		dims := u.label(mgtx, option.Label, unit.Sp(12), colText, 1)
+		macro.Stop()
+		maxLabel = maxInt(maxLabel, dims.Size.X)
+	}
+	return maxLabel + gtx.Dp(unit.Dp(42))
+}
+
+func (u *appUI) layoutRuleMenuPanel(gtx layout.Context, s *sectionState, options []model.RuleInfo, width int) layout.Dimensions {
+	gtx.Constraints.Min.Y = 0
+	widthDp := unit.Dp(float32(width) / gtx.Metric.PxPerDp)
+	return u.panel(gtx, widthDp, func(gtx layout.Context) layout.Dimensions {
+		children := make([]layout.FlexChild, 0, len(options))
+		for i, option := range options {
+			i := i
+			selected := s.FilterRuleID == option.ID
+			if s.menuKind == "sort" {
+				selected = s.SortRuleID == option.ID
+			}
+			children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				style := buttonStyle{plain: true}
+				if selected {
+					style = buttonStyle{primary: true}
+				}
+				return u.button(gtx, &s.menuClicks[i], option.Label, style)
+			}))
+		}
+		return layout.Flex{Axis: layout.Vertical, Gap: 2}.Layout(gtx, children...)
+	})
+}
+
+func (s *sectionState) menuAnchorValid(gtx layout.Context) bool {
+	return s.menuAnchor.X > 0 && s.menuAnchor.Y > gtx.Dp(unit.Dp(52))
 }
 
 func (u *appUI) closeRuleMenu() bool {

@@ -18,7 +18,9 @@ import (
 	"gioui.org/font"
 	"gioui.org/font/gofont"
 	"gioui.org/io/clipboard"
+	"gioui.org/io/event"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -91,6 +93,11 @@ type appUI struct {
 
 	screen screenMode
 	fatal  error
+	press  struct {
+		tag       struct{}
+		position  image.Point
+		hasOrigin bool
+	}
 
 	settings    model.Settings
 	layoutDoc   model.LayoutDoc
@@ -588,6 +595,25 @@ func (u *appUI) layout(gtx layout.Context) {
 		u.layoutDropOverlay(gtx)
 	}
 	u.layoutToasts(gtx)
+	u.trackPointerPress(gtx)
+}
+
+func (u *appUI) trackPointerPress(gtx layout.Context) {
+	pass := pointer.PassOp{}.Push(gtx.Ops)
+	area := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
+	event.Op(gtx.Ops, &u.press.tag)
+	area.Pop()
+	pass.Pop()
+	for {
+		ev, ok := gtx.Event(pointer.Filter{Target: &u.press.tag, Kinds: pointer.Press})
+		if !ok {
+			break
+		}
+		if press, ok := ev.(pointer.Event); ok && press.Kind == pointer.Press {
+			u.press.position = press.Position.Round()
+			u.press.hasOrigin = true
+		}
+	}
 }
 
 func (u *appUI) layoutFatal(gtx layout.Context) {

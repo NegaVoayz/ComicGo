@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image"
 	"path/filepath"
 	"testing"
 
@@ -88,11 +89,11 @@ func TestRuleMenusAreExclusiveAndToggleClosed(t *testing.T) {
 	second := &sectionState{}
 	u := &appUI{sections: []*sectionState{first, second}}
 
-	u.toggleRuleMenu(second, "sort")
+	u.toggleRuleMenu(second, "sort", image.Pt(100, 100))
 	if first.menuKind != "" || second.menuKind != "sort" {
 		t.Fatalf("open menus = %q, %q; want empty, sort", first.menuKind, second.menuKind)
 	}
-	u.toggleRuleMenu(second, "sort")
+	u.toggleRuleMenu(second, "sort", image.Pt(100, 100))
 	if second.menuKind != "" {
 		t.Fatalf("sort menu remained open after toggle: %q", second.menuKind)
 	}
