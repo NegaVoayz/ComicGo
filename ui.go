@@ -221,6 +221,7 @@ type detailSavedEvent struct {
 type pageLoadedEvent struct {
 	id   int64
 	page int
+	slot int
 	img  image.Image
 	err  error
 }
@@ -500,16 +501,16 @@ func (u *appUI) handleUIEvent(ev any) {
 			u.detail.hero = ev.img
 		}
 	case pageLoadedEvent:
-		if u.reader.id != ev.id || u.reader.page != ev.page {
+		if !u.reader.acceptsPage(ev.id, ev.slot, ev.page) {
 			return
 		}
-		u.reader.loading = false
+		u.reader.loading[ev.slot] = false
 		if ev.err != nil {
-			u.reader.err = ev.err.Error()
+			u.reader.errors[ev.slot] = ev.err.Error()
 			return
 		}
-		u.reader.img = ev.img
-		u.reader.err = ""
+		u.reader.images[ev.slot] = ev.img
+		u.reader.errors[ev.slot] = ""
 	case importFinishedEvent:
 		u.importing = false
 		u.importDone = 0
@@ -1408,7 +1409,7 @@ func (u *appUI) saveReaderProgress() {
 	if u.reader.id == 0 || u.reader.pageCount <= 0 {
 		return
 	}
-	id, page, count := u.reader.id, u.reader.page, u.reader.pageCount
+	id, page, count := u.reader.id, u.reader.progressPage(), u.reader.pageCount
 	go func() {
 		if err := u.backend.SetProgress(id, page, count); err != nil {
 			log.Printf("save reading progress: %v", err)
@@ -1423,7 +1424,7 @@ func (u *appUI) saveReaderProgressSync() {
 	if u.reader.id == 0 || u.reader.pageCount <= 0 {
 		return
 	}
-	if err := u.backend.SetProgress(u.reader.id, u.reader.page, u.reader.pageCount); err != nil {
+	if err := u.backend.SetProgress(u.reader.id, u.reader.progressPage(), u.reader.pageCount); err != nil {
 		log.Printf("save reading progress on close: %v", err)
 	}
 }

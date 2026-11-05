@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"comicgo/internal/model"
+
+	"gioui.org/io/key"
 )
 
 func TestLandscapeLeftCrop(t *testing.T) {
@@ -127,5 +129,92 @@ func TestLoadedPageFromPreviousQueryNeedsReload(t *testing.T) {
 	}
 	if s.pageNeedsLoad(0, 1, 3) {
 		t.Fatal("current, complete page was unnecessarily reloaded")
+	}
+}
+
+func TestReaderSpreadPageNormalization(t *testing.T) {
+	tests := []struct {
+		page, count int
+		twoPage     bool
+		want        int
+	}{
+		{page: 0, count: 10, twoPage: true, want: 0},
+		{page: 1, count: 10, twoPage: true, want: 0},
+		{page: 2, count: 10, twoPage: true, want: 2},
+		{page: 9, count: 10, twoPage: true, want: 8},
+		{page: 9, count: 10, twoPage: false, want: 9},
+		{page: -3, count: 10, twoPage: false, want: 0},
+		{page: 30, count: 10, twoPage: true, want: 8},
+	}
+	for _, tc := range tests {
+		if got := normalizeReaderPage(tc.page, tc.count, tc.twoPage); got != tc.want {
+			t.Errorf("normalizeReaderPage(%d, %d, %v) = %d, want %d", tc.page, tc.count, tc.twoPage, got, tc.want)
+		}
+	}
+
+	if got := readerLastViewStart(10, true); got != 8 {
+		t.Fatalf("last spread starts at %d, want 8", got)
+	}
+	if readerCanGoNext(8, 10, true) {
+		t.Fatal("the final spread was treated as having a next view")
+	}
+	if !readerCanGoNext(6, 10, true) {
+		t.Fatal("the penultimate spread was treated as final")
+	}
+	if got := (&readerState{page: 8, pageCount: 10, twoPage: true}).progressPage(); got != 9 {
+		t.Fatalf("final spread progress page = %d, want 9", got)
+	}
+}
+
+func TestReaderDirectionControlsPagingSides(t *testing.T) {
+	tests := []struct {
+		name      string
+		x         int
+		direction string
+		want      int
+	}{
+		{name: "LTR left is previous", x: 10, direction: model.ReadingDirectionLTR, want: -1},
+		{name: "LTR right is next", x: 90, direction: model.ReadingDirectionLTR, want: 1},
+		{name: "RTL left is next", x: 10, direction: model.ReadingDirectionRTL, want: 1},
+		{name: "RTL right is previous", x: 90, direction: model.ReadingDirectionRTL, want: -1},
+		{name: "center does nothing", x: 50, direction: model.ReadingDirectionRTL, want: 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := readerSidePageDelta(tc.x, 100, tc.direction); got != tc.want {
+				t.Fatalf("page delta = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReaderDirectionControlsArrowKeys(t *testing.T) {
+	if got := readerKeyPageDelta(key.NameRightArrow, model.ReadingDirectionLTR); got != 1 {
+		t.Fatalf("LTR right arrow delta = %d, want 1", got)
+	}
+	if got := readerKeyPageDelta(key.NameRightArrow, model.ReadingDirectionRTL); got != -1 {
+		t.Fatalf("RTL right arrow delta = %d, want -1", got)
+	}
+	if got := readerKeyPageDelta(key.NameLeftArrow, model.ReadingDirectionRTL); got != 1 {
+		t.Fatalf("RTL left arrow delta = %d, want 1", got)
+	}
+	if got := readerKeyPageDelta(key.NameDownArrow, model.ReadingDirectionRTL); got != 1 {
+		t.Fatalf("down arrow delta = %d, want 1", got)
+	}
+}
+
+func TestReaderAcceptsOnlyVisibleSpreadSlots(t *testing.T) {
+	r := readerState{id: 7, page: 2, pageCount: 5, twoPage: true}
+	if !r.acceptsPage(7, 0, 2) {
+		t.Fatal("reader rejected the leading visible page")
+	}
+	if !r.acceptsPage(7, 1, 3) {
+		t.Fatal("reader rejected the trailing visible page")
+	}
+	if r.acceptsPage(7, 1, 4) {
+		t.Fatal("reader accepted a stale page for the second slot")
+	}
+	if r.acceptsPage(8, 0, 2) {
+		t.Fatal("reader accepted a page for another comic")
 	}
 }

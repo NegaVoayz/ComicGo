@@ -118,11 +118,29 @@ type About struct {
 	ComicCount int    `json:"comicCount"`
 }
 
+// Supported comic reading directions. LTR places page 1 to the left of page 2;
+// RTL places page 1 to the right, as in Japanese manga.
+const (
+	ReadingDirectionLTR = "ltr"
+	ReadingDirectionRTL = "rtl"
+)
+
+// NormalizeReadingDirection returns a supported reading direction, defaulting
+// unknown or missing values to left-to-right.
+func NormalizeReadingDirection(direction string) string {
+	if direction == ReadingDirectionRTL {
+		return ReadingDirectionRTL
+	}
+	return ReadingDirectionLTR
+}
+
 // Settings is persisted in settings.json.
 type Settings struct {
-	LibraryRoots   []string `json:"libraryRoots"`
-	MediaTransport string   `json:"mediaTransport,omitempty"` // deprecated; retained for config compatibility
-	SchemaVersion  int      `json:"schemaVersion"`
+	LibraryRoots     []string `json:"libraryRoots"`
+	MediaTransport   string   `json:"mediaTransport,omitempty"` // deprecated; retained for config compatibility
+	ReadingDirection string   `json:"readingDirection,omitempty"`
+	TwoPageSpread    bool     `json:"twoPageSpread,omitempty"`
+	SchemaVersion    int      `json:"schemaVersion"`
 }
 
 // LayoutSection is one composable region of the shelf screen. The layout is a

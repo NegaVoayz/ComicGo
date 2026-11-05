@@ -81,6 +81,7 @@ func LoadSettings() (model.Settings, error) {
 		// Corrupt settings should not brick the app; fall back to defaults.
 		return DefaultSettings(), nil
 	}
+	s.ReadingDirection = model.NormalizeReadingDirection(s.ReadingDirection)
 	if s.SchemaVersion != SchemaVersion {
 		// On version change, keep roots/transport but re-stamp version.
 		s.SchemaVersion = SchemaVersion
@@ -91,13 +92,15 @@ func LoadSettings() (model.Settings, error) {
 // DefaultSettings returns the baseline settings.
 func DefaultSettings() model.Settings {
 	return model.Settings{
-		SchemaVersion: SchemaVersion,
+		ReadingDirection: model.ReadingDirectionLTR,
+		SchemaVersion:    SchemaVersion,
 	}
 }
 
 // SaveSettings writes settings.json atomically.
 func SaveSettings(s model.Settings) error {
 	s.SchemaVersion = SchemaVersion
+	s.ReadingDirection = model.NormalizeReadingDirection(s.ReadingDirection)
 	p, err := Resolve()
 	if err != nil {
 		return err

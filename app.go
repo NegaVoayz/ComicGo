@@ -236,6 +236,25 @@ func (a *App) Close() {
 // GetSettings returns the current settings.
 func (a *App) GetSettings() model.Settings { return a.settings }
 
+// SetReaderPreferences persists the page layout and reading direction used by
+// the reader. Unknown directions fall back to left-to-right.
+func (a *App) SetReaderPreferences(direction string, twoPage bool) error {
+	direction = model.NormalizeReadingDirection(direction)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	oldDirection := a.settings.ReadingDirection
+	oldTwoPage := a.settings.TwoPageSpread
+	a.settings.ReadingDirection = direction
+	a.settings.TwoPageSpread = twoPage
+	if err := config.SaveSettings(a.settings); err != nil {
+		a.settings.ReadingDirection = oldDirection
+		a.settings.TwoPageSpread = oldTwoPage
+		return err
+	}
+	return nil
+}
+
 // AddLibrary persists a folder to the library roots and scans it.
 func (a *App) AddLibrary(dir string) error {
 	fi, err := os.Stat(dir)

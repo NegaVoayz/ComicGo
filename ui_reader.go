@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"comicgo/internal/imgutil"
+	"comicgo/internal/model"
 
 	"gioui.org/gesture"
 	"gioui.org/io/key"
@@ -18,25 +19,125 @@ import (
 	"gioui.org/widget"
 )
 
+const readerPageSlots = 2
+
 type readerState struct {
 	id          int64
 	title       string
 	page        int
 	pageCount   int
-	img         image.Image
-	loading     bool
-	err         string
+	direction   string
+	twoPage     bool
+	images      [readerPageSlots]image.Image
+	loading     [readerPageSlots]bool
+	errors      [readerPageSlots]string
 	pageFocused bool
-	back        widget.Clickable
-	prev        widget.Clickable
-	next        widget.Clickable
-	goButton    widget.Clickable
-	pageEditor  widget.Editor
-	stageClick  gesture.Click
+
+	back       widget.Clickable
+	prev       widget.Clickable
+	next       widget.Clickable
+	goButton   widget.Clickable
+	onePage    widget.Clickable
+	twoPages   widget.Clickable
+	ltr        widget.Clickable
+	rtl        widget.Clickable
+	pageEditor widget.Editor
+	stageClick gesture.Click
 }
 
 func (r *readerState) reset() {
 	*r = readerState{}
+}
+
+func (r *readerState) visiblePageCount() int {
+	if r.page < 0 || r.page >= r.pageCount {
+		return 0
+	}
+	if r.twoPage && r.page+1 < r.pageCount {
+		return 2
+	}
+	return 1
+}
+
+func (r *readerState) pageAt(slot int) int {
+	if slot < 0 || slot >= r.visiblePageCount() {
+		return -1
+	}
+	return r.page + slot
+}
+
+func (r *readerState) acceptsPage(id int64, slot, page int) bool {
+	return id == r.id && slot >= 0 && slot < readerPageSlots && page == r.pageAt(slot)
+}
+
+func (r *readerState) progressPage() int {
+	if r.pageCount <= 0 {
+		return 0
+	}
+	return minInt(r.page+r.visiblePageCount()-1, r.pageCount-1)
+}
+
+func readerPageStep(twoPage bool) int {
+	if twoPage {
+		return 2
+	}
+	return 1
+}
+
+func normalizeReaderPage(page, pageCount int, twoPage bool) int {
+	if pageCount <= 0 {
+		return 0
+	}
+	page = maxInt(0, minInt(page, pageCount-1))
+	if twoPage {
+		page -= page % readerPageStep(true)
+	}
+	return page
+}
+
+func readerLastViewStart(pageCount int, twoPage bool) int {
+	return normalizeReaderPage(pageCount-1, pageCount, twoPage)
+}
+
+func readerCanGoNext(page, pageCount int, twoPage bool) bool {
+	return page >= 0 && page+readerPageStep(twoPage) < pageCount
+}
+
+func readerSidePageDelta(x, width int, direction string) int {
+	if x < width*28/100 {
+		if direction == model.ReadingDirectionRTL {
+			return 1
+		}
+		return -1
+	}
+	if x > width*72/100 {
+		if direction == model.ReadingDirectionRTL {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+
+func readerKeyPageDelta(name key.Name, direction string) int {
+	switch name {
+	case key.NameRightArrow:
+		if direction == model.ReadingDirectionRTL {
+			return -1
+		}
+		return 1
+	case key.NameLeftArrow:
+		if direction == model.ReadingDirectionRTL {
+			return 1
+		}
+		return -1
+	case key.NameDownArrow, key.NamePageDown, key.NameSpace:
+		return 1
+	case key.NameUpArrow, key.NamePageUp:
+		return -1
+	default:
+		return 0
+	}
 }
 
 func (u *appUI) startReader() {
@@ -44,37 +145,38 @@ func (u *appUI) startReader() {
 	if m.PageCount <= 0 {
 		return
 	}
-	page := maxInt(0, minInt(m.LastReadPage, m.PageCount-1))
+	direction := model.NormalizeReadingDirection(u.settings.ReadingDirection)
+	twoPage := u.settings.TwoPageSpread
+	page := normalizeReaderPage(m.LastReadPage, m.PageCount, twoPage)
 	u.reader = readerState{
 		id:        m.ID,
 		title:     m.Title(),
 		page:      page,
 		pageCount: m.PageCount,
-		loading:   true,
+		direction: direction,
+		twoPage:   twoPage,
 	}
 	u.reader.pageEditor.SingleLine = true
 	u.reader.pageEditor.SetText(strconv.Itoa(page + 1))
 	u.screen = screenReader
-	u.requestReaderPage(page)
+	u.loadReaderView(page)
 }
 
-func (u *appUI) requestReaderPage(page int) {
-	if page < 0 || page >= u.reader.pageCount {
+func (u *appUI) requestReaderPage(page, slot int) {
+	if page < 0 || page >= u.reader.pageCount || slot < 0 || slot >= readerPageSlots {
 		return
 	}
 	id := u.reader.id
-	u.reader.loading = true
+	u.reader.loading[slot] = true
 	go func() {
 		b, _, err := u.backend.pageBytes(id, page)
 		if err != nil {
-			u.post(pageLoadedEvent{id: id, page: page, err: err})
+			u.post(pageLoadedEvent{id: id, page: page, slot: slot, err: err})
 			return
 		}
 		img, _, err := imgutil.Decode(b)
-		u.post(pageLoadedEvent{id: id, page: page, img: img, err: err})
+		u.post(pageLoadedEvent{id: id, page: page, slot: slot, img: img, err: err})
 	}()
-	u.warmReaderPage(page + 1)
-	u.warmReaderPage(page - 1)
 }
 
 func (u *appUI) warmReaderPage(page int) {
@@ -87,26 +189,93 @@ func (u *appUI) warmReaderPage(page int) {
 	}()
 }
 
+func (u *appUI) loadReaderView(page int) {
+	page = normalizeReaderPage(page, u.reader.pageCount, u.reader.twoPage)
+	u.reader.page = page
+	u.reader.images = [readerPageSlots]image.Image{}
+	u.reader.loading = [readerPageSlots]bool{}
+	u.reader.errors = [readerPageSlots]string{}
+	u.reader.pageEditor.SetText(strconv.Itoa(page + 1))
+	for slot := 0; slot < u.reader.visiblePageCount(); slot++ {
+		u.requestReaderPage(u.reader.pageAt(slot), slot)
+	}
+
+	step := readerPageStep(u.reader.twoPage)
+	next := page + step
+	if next < u.reader.pageCount {
+		u.warmReaderPage(next)
+		if u.reader.twoPage {
+			u.warmReaderPage(next + 1)
+		}
+	}
+	previous := page - step
+	if previous >= 0 {
+		u.warmReaderPage(previous)
+		if u.reader.twoPage {
+			u.warmReaderPage(previous + 1)
+		}
+	}
+}
+
 func (u *appUI) goToReaderPage(page int) {
 	if u.reader.pageCount <= 0 {
 		return
 	}
-	page = maxInt(0, minInt(page, u.reader.pageCount-1))
-	if page == u.reader.page && u.reader.img != nil {
+	page = normalizeReaderPage(page, u.reader.pageCount, u.reader.twoPage)
+	if page == u.reader.page && u.reader.images[0] != nil {
 		return
 	}
-	u.reader.page = page
-	u.reader.pageEditor.SetText(strconv.Itoa(page + 1))
-	u.requestReaderPage(page)
+	u.loadReaderView(page)
 	u.scheduleProgressSave()
 	u.invalidate()
 }
 
+func (u *appUI) setReaderTwoPage(twoPage bool) {
+	if u.reader.twoPage == twoPage {
+		return
+	}
+	oldTwoPage := u.reader.twoPage
+	oldSettings := u.settings.TwoPageSpread
+	u.reader.twoPage = twoPage
+	u.settings.TwoPageSpread = twoPage
+	if err := u.backend.SetReaderPreferences(u.reader.direction, twoPage); err != nil {
+		u.reader.twoPage = oldTwoPage
+		u.settings.TwoPageSpread = oldSettings
+		u.toast("Save reader settings: "+err.Error(), toastError)
+		return
+	}
+	oldPage := u.reader.page
+	page := normalizeReaderPage(oldPage, u.reader.pageCount, twoPage)
+	u.loadReaderView(page)
+	if page != oldPage {
+		u.scheduleProgressSave()
+	}
+	u.invalidate()
+}
+
+func (u *appUI) setReaderDirection(direction string) {
+	direction = model.NormalizeReadingDirection(direction)
+	if u.reader.direction == direction {
+		return
+	}
+	oldDirection := u.reader.direction
+	oldSettings := u.settings.ReadingDirection
+	u.reader.direction = direction
+	u.settings.ReadingDirection = direction
+	if err := u.backend.SetReaderPreferences(direction, u.reader.twoPage); err != nil {
+		u.reader.direction = oldDirection
+		u.settings.ReadingDirection = oldSettings
+		u.toast("Save reader settings: "+err.Error(), toastError)
+		return
+	}
+	u.invalidate()
+}
+
 func (u *appUI) scheduleProgressSave() {
-	id, page, count := u.reader.id, u.reader.page, u.reader.pageCount
+	id, page, count, title := u.reader.id, u.reader.progressPage(), u.reader.pageCount, u.reader.title
 	go func() {
 		if err := u.backend.SetProgress(id, page, count); err != nil {
-			u.post(scanErrorEvent{path: u.reader.title, err: err})
+			u.post(scanErrorEvent{path: title, err: err})
 			return
 		}
 		u.post(layoutChangedEvent{})
@@ -119,10 +288,22 @@ func (u *appUI) layoutReader(gtx layout.Context) layout.Dimensions {
 		return layout.Dimensions{}
 	}
 	if u.reader.prev.Clicked(gtx) {
-		u.goToReaderPage(u.reader.page - 1)
+		u.goToReaderPage(u.reader.page - readerPageStep(u.reader.twoPage))
 	}
 	if u.reader.next.Clicked(gtx) {
-		u.goToReaderPage(u.reader.page + 1)
+		u.goToReaderPage(u.reader.page + readerPageStep(u.reader.twoPage))
+	}
+	if u.reader.onePage.Clicked(gtx) {
+		u.setReaderTwoPage(false)
+	}
+	if u.reader.twoPages.Clicked(gtx) {
+		u.setReaderTwoPage(true)
+	}
+	if u.reader.ltr.Clicked(gtx) {
+		u.setReaderDirection(model.ReadingDirectionLTR)
+	}
+	if u.reader.rtl.Clicked(gtx) {
+		u.setReaderDirection(model.ReadingDirectionRTL)
 	}
 	if u.reader.goButton.Clicked(gtx) {
 		if n, err := strconv.Atoi(strings.TrimSpace(u.reader.pageEditor.Text())); err == nil {
@@ -150,41 +331,84 @@ func (u *appUI) layoutReaderStage(gtx layout.Context) layout.Dimensions {
 		if ev.Kind != gesture.KindClick {
 			continue
 		}
-		if ev.Position.X < gtx.Constraints.Max.X*28/100 {
-			u.goToReaderPage(u.reader.page - 1)
-		} else if ev.Position.X > gtx.Constraints.Max.X*72/100 {
-			u.goToReaderPage(u.reader.page + 1)
+		if delta := readerSidePageDelta(ev.Position.X, gtx.Constraints.Max.X, u.reader.direction); delta != 0 {
+			pages := readerPageStep(u.reader.twoPage)
+			if delta < 0 {
+				pages = -pages
+			}
+			u.goToReaderPage(u.reader.page + pages)
 		}
 	}
-	paint.Fill(gtx.Ops, colorReaderBG)
+
 	stage := gtx
 	stage.Constraints.Min = stage.Constraints.Max
-	dims := layout.Dimensions{Size: stage.Constraints.Max}
+	paint.Fill(stage.Ops, colorReaderBG)
 	switch {
-	case u.reader.err != "":
-		layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			return u.label(gtx, "Could not load this page.\n"+u.reader.err, unit.Sp(14), colFav, 3)
+	case u.reader.visiblePageCount() == 0:
+		layout.Center.Layout(stage, func(gtx layout.Context) layout.Dimensions {
+			return u.label(gtx, "No page selected.", unit.Sp(14), colDim, 1)
 		})
-	case u.reader.img == nil:
-		layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	case u.reader.visiblePageCount() == 1:
+		layout.Center.Layout(stage, func(gtx layout.Context) layout.Dimensions {
+			return u.layoutReaderPage(stage, 0)
+		})
+	default:
+		order := [readerPageSlots]int{0, 1}
+		if u.reader.direction == model.ReadingDirectionRTL {
+			order = [readerPageSlots]int{1, 0}
+		}
+		layout.Flex{Axis: layout.Horizontal}.Layout(stage,
+			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+				return u.layoutReaderPage(gtx, order[0])
+			}),
+			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+				return u.layoutReaderPage(gtx, order[1])
+			}),
+		)
+	}
+	rect := image.Rect(0, 0, gtx.Constraints.Max.X, gtx.Constraints.Max.Y)
+	defer clip.Rect(rect).Push(gtx.Ops).Pop()
+	u.reader.stageClick.Add(gtx.Ops)
+	return layout.Dimensions{Size: gtx.Constraints.Max}
+}
+
+func (u *appUI) layoutReaderPage(gtx layout.Context, slot int) layout.Dimensions {
+	if slot < 0 || slot >= u.reader.visiblePageCount() {
+		return layout.Dimensions{}
+	}
+	switch {
+	case u.reader.errors[slot] != "":
+		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return u.label(gtx, "Could not load this page.\n"+u.reader.errors[slot], unit.Sp(14), colFav, 3)
+		})
+	case u.reader.images[slot] == nil:
+		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return u.label(gtx, "Loading page...", unit.Sp(14), colDim, 1)
 		})
 	default:
-		layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return widget.Image{
-				Src:   paint.NewImageOp(u.reader.img),
+				Src:   paint.NewImageOp(u.reader.images[slot]),
 				Fit:   widget.Contain,
 				Scale: 1 / gtx.Metric.PxPerDp,
 			}.Layout(gtx)
 		})
 	}
-	rect := image.Rect(0, 0, gtx.Constraints.Max.X, gtx.Constraints.Max.Y)
-	defer clip.Rect(rect).Push(gtx.Ops).Pop()
-	u.reader.stageClick.Add(gtx.Ops)
-	return dims
 }
 
 var colorReaderBG = color.NRGBA{R: 0x0c, G: 0x0d, B: 0x10, A: 0xff}
+
+func (u *appUI) readerPageSummary() string {
+	if u.reader.pageCount <= 0 {
+		return "page 0 / 0"
+	}
+	lastPage := minInt(u.reader.page+u.reader.visiblePageCount(), u.reader.pageCount)
+	progress := lastPage * 100 / u.reader.pageCount
+	if u.reader.twoPage && lastPage > u.reader.page+1 {
+		return fmt.Sprintf("pages %d-%d / %d - %d%%", u.reader.page+1, lastPage, u.reader.pageCount, progress)
+	}
+	return fmt.Sprintf("page %d / %d - %d%%", u.reader.page+1, u.reader.pageCount, progress)
+}
 
 func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 	height := gtx.Dp(unit.Dp(54))
@@ -195,11 +419,7 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 	paint.FillShape(gtx.Ops, colLine, clip.Rect{Max: image.Pt(gtx.Constraints.Max.X, 1)}.Op())
 	u.reader.pageFocused = gtx.Focused(&u.reader.pageEditor)
 	return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		progress := 0
-		if u.reader.pageCount > 0 {
-			progress = (u.reader.page + 1) * 100 / u.reader.pageCount
-		}
-		return layout.Flex{Axis: layout.Horizontal, Gap: 10, Alignment: layout.Middle}.Layout(gtx,
+		return layout.Flex{Axis: layout.Horizontal, Gap: 8, Alignment: layout.Middle}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return u.button(gtx, &u.reader.back, "< Library", buttonStyle{})
 			}),
@@ -209,12 +429,12 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 						return u.label(gtx, u.reader.title, unit.Sp(13), colText, 1)
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return u.label(gtx, fmt.Sprintf("page %d / %d - %d%%", u.reader.page+1, u.reader.pageCount, progress), unit.Sp(11), colDim, 1)
+						return u.label(gtx, u.readerPageSummary(), unit.Sp(11), colDim, 1)
 					}),
 				)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				gtx.Constraints.Min.X = gtx.Dp(62)
+				gtx.Constraints.Min.X = gtx.Dp(56)
 				gtx.Constraints.Max.X = gtx.Constraints.Min.X
 				return u.editor(gtx, &u.reader.pageEditor, "Page", 34)
 			}),
@@ -222,10 +442,22 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 				return u.button(gtx, &u.reader.goButton, "Go", buttonStyle{})
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.prev, "<", buttonStyle{disabled: u.reader.page <= 0})
+				return u.button(gtx, &u.reader.onePage, "1 page", buttonStyle{primary: !u.reader.twoPage})
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.next, ">", buttonStyle{disabled: u.reader.page >= u.reader.pageCount-1})
+				return u.button(gtx, &u.reader.twoPages, "2 pages", buttonStyle{primary: u.reader.twoPage})
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.button(gtx, &u.reader.ltr, "LTR", buttonStyle{primary: u.reader.direction == model.ReadingDirectionLTR})
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.button(gtx, &u.reader.rtl, "RTL", buttonStyle{primary: u.reader.direction == model.ReadingDirectionRTL})
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.button(gtx, &u.reader.prev, "Prev", buttonStyle{disabled: u.reader.page <= 0})
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.button(gtx, &u.reader.next, "Next", buttonStyle{disabled: !readerCanGoNext(u.reader.page, u.reader.pageCount, u.reader.twoPage)})
 			}),
 		)
 	})
@@ -235,18 +467,20 @@ func (u *appUI) handleReaderKey(ev key.Event) bool {
 	if u.screen != screenReader || u.reader.pageFocused {
 		return false
 	}
+	if delta := readerKeyPageDelta(ev.Name, u.reader.direction); delta != 0 {
+		if delta < 0 {
+			u.goToReaderPage(u.reader.page - readerPageStep(u.reader.twoPage))
+		} else {
+			u.goToReaderPage(u.reader.page + readerPageStep(u.reader.twoPage))
+		}
+		return true
+	}
 	switch ev.Name {
-	case key.NameRightArrow, key.NameDownArrow, key.NamePageDown, key.NameSpace:
-		u.goToReaderPage(u.reader.page + 1)
-		return true
-	case key.NameLeftArrow, key.NameUpArrow, key.NamePageUp:
-		u.goToReaderPage(u.reader.page - 1)
-		return true
 	case key.NameHome:
 		u.goToReaderPage(0)
 		return true
 	case key.NameEnd:
-		u.goToReaderPage(u.reader.pageCount - 1)
+		u.goToReaderPage(readerLastViewStart(u.reader.pageCount, u.reader.twoPage))
 		return true
 	}
 	return false
