@@ -1059,7 +1059,6 @@ func (u *appUI) layoutRootChip(gtx layout.Context, name string, remove *widget.C
 				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						gtx.Constraints.Max.X = maxInt(0, gtx.Constraints.Max.X-closeSize)
-						defer op.Offset(image.Pt(0, gtx.Dp(unit.Dp(2)))).Push(gtx.Ops).Pop()
 						return u.label(gtx, name, unit.Sp(12), colDim, 1)
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {

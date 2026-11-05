@@ -295,7 +295,11 @@ func (u *appUI) layoutGridContent(gtx layout.Context, s *sectionState) layout.Di
 		if row == 0 {
 			top = unit.Dp(gridPad)
 		}
-		return layout.Inset{Top: top, Left: unit.Dp(gridPad)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		bottom := unit.Dp(0)
+		if row < rows-1 {
+			bottom = unit.Dp(gridGap)
+		}
+		return layout.Inset{Top: top, Bottom: bottom, Left: unit.Dp(gridPad)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			gtx.Constraints.Min.X = cols*cardW + maxInt(0, cols-1)*gtx.Dp(gridGap)
 			gtx.Constraints.Max.X = gtx.Constraints.Min.X
 			children := make([]layout.FlexChild, 0, cols)
