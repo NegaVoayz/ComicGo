@@ -28,6 +28,7 @@ const (
 	gridPad     = 14
 	rowsPerPage = 6
 	fetchRows   = 3
+	countWidth  = 34
 	// Gio's label line boxes and compact tag buttons need more room than the
 	// browser caption, which previously clipped the tag row under the next cover.
 	captionH = 76
@@ -237,14 +238,16 @@ func (u *appUI) layoutSectionHeader(gtx layout.Context, s *sectionState) layout.
 							return u.labelColor(gtx, s.Title, unit.Sp(16), colText, 1, font.Bold)
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							width := gtx.Dp(unit.Dp(76))
+							width := gtx.Dp(unit.Dp(countWidth))
 							gtx.Constraints.Min.X = width
 							gtx.Constraints.Max.X = width
 							text := strconv.Itoa(s.total)
+							color := colDim
 							if s.searchPending {
-								text = "searching..."
+								text = "..."
+								color = colAccent
 							}
-							dims := u.label(gtx, text, unit.Sp(12), colDim, 1)
+							dims := u.label(gtx, text, unit.Sp(12), color, 1)
 							dims.Size.X = width
 							return dims
 						}),
