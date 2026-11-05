@@ -42,6 +42,7 @@ type sectionState struct {
 	list          layout.List
 	search        widget.Editor
 	lastSearch    string
+	searchPending bool
 	cardRevisions map[int]int
 	filterClick   widget.Clickable
 	sortClick     widget.Clickable
@@ -182,19 +183,14 @@ func (u *appUI) layoutSection(gtx layout.Context, s *sectionState, viewportH int
 		u.toggleRuleMenu(s, "sort", u.press.position)
 	}
 	u.handleRuleMenu(gtx, s)
-	text := s.search.Text()
-	if text != s.lastSearch {
-		s.lastSearch = text
-		if text != u.search {
-			u.setSearch(text, s)
-		}
-	}
 
 	section := layout.Inset{Top: unit.Dp(14), Bottom: unit.Dp(2), Left: unit.Dp(18), Right: unit.Dp(18)}
 	return section.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical, Gap: 8}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.layoutSectionHeader(gtx, s)
+				dims := u.layoutSectionHeader(gtx, s)
+				u.syncSectionSearch(s)
+				return dims
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				if len(u.tags) == 0 {
@@ -241,7 +237,16 @@ func (u *appUI) layoutSectionHeader(gtx layout.Context, s *sectionState) layout.
 							return u.labelColor(gtx, s.Title, unit.Sp(16), colText, 1, font.Bold)
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.label(gtx, strconv.Itoa(s.total), unit.Sp(12), colDim, 1)
+							width := gtx.Dp(unit.Dp(76))
+							gtx.Constraints.Min.X = width
+							gtx.Constraints.Max.X = width
+							text := strconv.Itoa(s.total)
+							if s.searchPending {
+								text = "searching..."
+							}
+							dims := u.label(gtx, text, unit.Sp(12), colDim, 1)
+							dims.Size.X = width
+							return dims
 						}),
 					)
 				}),
@@ -624,12 +629,27 @@ func (u *appUI) setTags(tags []string) {
 	for _, s := range u.sections {
 		s.tagClicks = make([]widget.Clickable, len(tags))
 	}
-	u.refreshShelf()
+	u.refreshShelfQuery()
 }
 
 func (u *appUI) setSearch(text string, source *sectionState) {
 	u.syncSearchEditors(text, source)
-	u.refreshShelf()
+	for _, s := range u.sections {
+		s.searchPending = true
+	}
+	u.refreshShelfQuery()
+	u.invalidate()
+}
+
+func (u *appUI) syncSectionSearch(s *sectionState) {
+	text := s.search.Text()
+	if text == s.lastSearch {
+		return
+	}
+	s.lastSearch = text
+	if text != u.search {
+		u.setSearch(text, s)
+	}
 }
 
 func (u *appUI) syncSearchEditors(text string, source *sectionState) {

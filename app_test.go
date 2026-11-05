@@ -252,7 +252,6 @@ func TestUpdateMetadataIllegalTitleSkipsRename(t *testing.T) {
 	}
 }
 
-
 func TestAppCountQueryProgressFav(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "app.db")
 	st, err := index.Open(dbPath)
@@ -335,6 +334,7 @@ func TestSearchMatching(t *testing.T) {
 		"space":  1, // Title value substring
 		"zeta":   1, // filename (title fallback strips ext, filename still matches)
 		"tanaka": 1, // metadata value
+		"title":  0, // metadata key, not user-visible content
 		"nope":   0,
 		"":       3, // empty search = all
 	}

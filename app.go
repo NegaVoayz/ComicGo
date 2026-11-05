@@ -680,15 +680,15 @@ func searchQueryMatch(m model.Meta, q searchQuery) bool {
 }
 
 // textFieldMatch reports whether needle occurs (case-insensitively) in the
-// title, file name, or any metadata key/value.
+// title, file name, or any metadata value. Metadata field names are not user
+// content and must not make broad terms such as "a" match every comic.
 func textFieldMatch(m model.Meta, needle string) bool {
 	if strings.Contains(strings.ToLower(m.Title()), needle) ||
 		strings.Contains(strings.ToLower(m.Filename), needle) {
 		return true
 	}
-	for k, v := range m.KV {
-		if strings.Contains(strings.ToLower(k), needle) ||
-			strings.Contains(strings.ToLower(v), needle) {
+	for _, v := range m.KV {
+		if strings.Contains(strings.ToLower(v), needle) {
 			return true
 		}
 	}

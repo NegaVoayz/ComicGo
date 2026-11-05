@@ -357,8 +357,12 @@ func (u *appUI) loadBackendState() {
 }
 
 func (u *appUI) refreshShelf() {
-	u.refresh++
 	go func() { u.post(indexedCountEvent{count: u.backend.CountComics("")}) }()
+	u.refreshShelfQuery()
+}
+
+func (u *appUI) refreshShelfQuery() {
+	u.refresh++
 	for i := range u.sections {
 		s := u.sections[i]
 		s.pending = make(map[int]bool)
@@ -423,7 +427,11 @@ func (u *appUI) handleUIEvent(ev any) {
 		if ev.index < 0 || ev.index >= len(u.sections) || ev.revision != u.refresh {
 			return
 		}
-		u.sections[ev.index].total = ev.count
+		s := u.sections[ev.index]
+		s.total = ev.count
+		if ev.count == 0 {
+			s.searchPending = false
+		}
 	case indexedCountEvent:
 		u.indexed = ev.count
 	case sectionCardsEvent:
@@ -433,6 +441,9 @@ func (u *appUI) handleUIEvent(ev any) {
 		s := u.sections[ev.index]
 		delete(s.pending, ev.start)
 		if ev.err != nil {
+			if ev.start == 0 {
+				s.searchPending = false
+			}
 			u.toast("Load shelf: "+ev.err.Error(), toastError)
 			return
 		}
@@ -443,6 +454,9 @@ func (u *appUI) handleUIEvent(ev any) {
 		for i := ev.start + len(ev.cards); i < ev.start+ev.limit; i++ {
 			delete(s.cards, i)
 			delete(s.cardRevisions, i)
+		}
+		if ev.start == 0 {
+			s.searchPending = false
 		}
 	case coverLoadedEvent:
 		delete(u.coverLoading, ev.id)
