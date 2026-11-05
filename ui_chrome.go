@@ -186,11 +186,7 @@ func (u *appUI) layoutWindowsCaptionButton(gtx layout.Context, part chromePart, 
 		if hovered && u.chrome.focused {
 			icon = colText
 		}
-		background := colBGSoft
-		if bg.A != 0 {
-			background = bg
-		}
-		drawCaptionGlyph(gtx.Ops, part, icon, background, gtx.Constraints.Max, u.chrome.maximized)
+		drawCaptionGlyph(gtx.Ops, part, icon, gtx.Constraints.Max, u.chrome.maximized)
 		return layout.Dimensions{Size: gtx.Constraints.Max}
 	})
 }
@@ -233,7 +229,7 @@ func (u *appUI) layoutMacCaptionButton(gtx layout.Context, part chromePart, acti
 	})
 }
 
-func drawCaptionGlyph(ops *op.Ops, part chromePart, col, background color.NRGBA, size image.Point, maximized bool) {
+func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.Point, maximized bool) {
 	cx := size.X / 2
 	cy := size.Y / 2
 	glyph := maxInt(6, size.Y/7)
@@ -250,9 +246,6 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col, background color.NRGBA,
 		square.Begin(ops)
 		addRoundedRectPath(&square, geometry.Square, geometry.Radius)
 		paint.FillShape(ops, col, clip.Stroke{Path: square.End(), Width: 1}.Op())
-		horizontalGap, verticalGap := captionRestoreGapRects(geometry)
-		paint.FillShape(ops, background, clip.Rect(horizontalGap).Op())
-		paint.FillShape(ops, background, clip.Rect(verticalGap).Op())
 		return
 	}
 	var path clip.Path
@@ -294,22 +287,6 @@ func captionRestoreGeometry(cx, cy, half int) restoreGlyphGeometry {
 		BracketCorner: image.Pt(cx+half+1, cy-half-1),
 		BracketEnd:    image.Pt(cx+half+1, cy+half/2),
 	}
-}
-
-func captionRestoreGapRects(geometry restoreGlyphGeometry) (image.Rectangle, image.Rectangle) {
-	horizontal := image.Rect(
-		geometry.BracketStart.X,
-		geometry.Square.Min.Y-1,
-		geometry.BracketCorner.X,
-		geometry.Square.Min.Y,
-	)
-	vertical := image.Rect(
-		geometry.Square.Max.X+1,
-		geometry.Square.Min.Y,
-		geometry.Square.Max.X+2,
-		geometry.BracketEnd.Y,
-	)
-	return horizontal, vertical
 }
 
 func addRectPath(path *clip.Path, rect image.Rectangle) {
