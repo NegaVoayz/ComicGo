@@ -34,8 +34,8 @@ type readerState struct {
 	pageFocused bool
 
 	back       widget.Clickable
-	prev       widget.Clickable
-	next       widget.Clickable
+	left       widget.Clickable
+	right      widget.Clickable
 	goButton   widget.Clickable
 	onePage    widget.Clickable
 	twoPages   widget.Clickable
@@ -103,18 +103,35 @@ func readerCanGoNext(page, pageCount int, twoPage bool) bool {
 	return page >= 0 && page+readerPageStep(twoPage) < pageCount
 }
 
-func readerSidePageDelta(x, width int, direction string) int {
-	if x < width*28/100 {
+func readerCanMove(page, pageCount int, twoPage bool, delta int) bool {
+	if delta < 0 {
+		return page > 0
+	}
+	return readerCanGoNext(page, pageCount, twoPage)
+}
+
+func readerSpatialPageDelta(side int, direction string) int {
+	if side < 0 {
 		if direction == model.ReadingDirectionRTL {
 			return 1
 		}
 		return -1
 	}
-	if x > width*72/100 {
+	if side > 0 {
 		if direction == model.ReadingDirectionRTL {
 			return -1
 		}
 		return 1
+	}
+	return 0
+}
+
+func readerSidePageDelta(x, width int, direction string) int {
+	if x < width*28/100 {
+		return readerSpatialPageDelta(-1, direction)
+	}
+	if x > width*72/100 {
+		return readerSpatialPageDelta(1, direction)
 	}
 	return 0
 }
@@ -287,11 +304,11 @@ func (u *appUI) layoutReader(gtx layout.Context) layout.Dimensions {
 		u.closeReader()
 		return layout.Dimensions{}
 	}
-	if u.reader.prev.Clicked(gtx) {
-		u.goToReaderPage(u.reader.page - readerPageStep(u.reader.twoPage))
+	if u.reader.left.Clicked(gtx) {
+		u.moveReaderSide(-1)
 	}
-	if u.reader.next.Clicked(gtx) {
-		u.goToReaderPage(u.reader.page + readerPageStep(u.reader.twoPage))
+	if u.reader.right.Clicked(gtx) {
+		u.moveReaderSide(1)
 	}
 	if u.reader.onePage.Clicked(gtx) {
 		u.setReaderTwoPage(false)
@@ -320,6 +337,18 @@ func (u *appUI) layoutReader(gtx layout.Context) layout.Dimensions {
 			return u.layoutReaderControls(gtx)
 		}),
 	)
+}
+
+func (u *appUI) moveReaderSide(side int) {
+	delta := readerSpatialPageDelta(side, u.reader.direction)
+	if !readerCanMove(u.reader.page, u.reader.pageCount, u.reader.twoPage, delta) {
+		return
+	}
+	pageDelta := readerPageStep(u.reader.twoPage)
+	if delta < 0 {
+		pageDelta = -pageDelta
+	}
+	u.goToReaderPage(u.reader.page + pageDelta)
 }
 
 func (u *appUI) layoutReaderStage(gtx layout.Context) layout.Dimensions {
@@ -421,7 +450,7 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 	return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Horizontal, Gap: 8, Alignment: layout.Middle}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.back, "< Library", buttonStyle{})
+				return u.readerFooterButton(gtx, &u.reader.back, "< Library", buttonStyle{})
 			}),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -436,30 +465,91 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				gtx.Constraints.Min.X = gtx.Dp(56)
 				gtx.Constraints.Max.X = gtx.Constraints.Min.X
+				gtx.Constraints.Min.Y = gtx.Dp(34)
+				gtx.Constraints.Max.Y = gtx.Constraints.Min.Y
 				return u.editor(gtx, &u.reader.pageEditor, "Page", 34)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.goButton, "Go", buttonStyle{})
+				return u.readerFooterButton(gtx, &u.reader.goButton, "Go", buttonStyle{})
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.onePage, "1 page", buttonStyle{primary: !u.reader.twoPage})
+				return u.readerSegmentControl(gtx, unit.Dp(132),
+					&u.reader.onePage, "1 page", !u.reader.twoPage,
+					&u.reader.twoPages, "2 pages", u.reader.twoPage,
+				)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.twoPages, "2 pages", buttonStyle{primary: u.reader.twoPage})
+				return u.readerSegmentControl(gtx, unit.Dp(112),
+					&u.reader.ltr, "LTR", u.reader.direction == model.ReadingDirectionLTR,
+					&u.reader.rtl, "RTL", u.reader.direction == model.ReadingDirectionRTL,
+				)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.ltr, "LTR", buttonStyle{primary: u.reader.direction == model.ReadingDirectionLTR})
+				leftDelta := readerSpatialPageDelta(-1, u.reader.direction)
+				return u.readerFooterButton(gtx, &u.reader.left, "<", buttonStyle{
+					disabled: !readerCanMove(u.reader.page, u.reader.pageCount, u.reader.twoPage, leftDelta),
+				})
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.rtl, "RTL", buttonStyle{primary: u.reader.direction == model.ReadingDirectionRTL})
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.prev, "Prev", buttonStyle{disabled: u.reader.page <= 0})
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.reader.next, "Next", buttonStyle{disabled: !readerCanGoNext(u.reader.page, u.reader.pageCount, u.reader.twoPage)})
+				rightDelta := readerSpatialPageDelta(1, u.reader.direction)
+				return u.readerFooterButton(gtx, &u.reader.right, ">", buttonStyle{
+					disabled: !readerCanMove(u.reader.page, u.reader.pageCount, u.reader.twoPage, rightDelta),
+				})
 			}),
 		)
+	})
+}
+
+func (u *appUI) readerFooterButton(gtx layout.Context, click *widget.Clickable, text string, style buttonStyle) layout.Dimensions {
+	gtx.Constraints.Min.Y = 0
+	return u.button(gtx, click, text, style)
+}
+
+func (u *appUI) readerSegmentControl(gtx layout.Context, width unit.Dp, first *widget.Clickable, firstLabel string, firstActive bool, second *widget.Clickable, secondLabel string, secondActive bool) layout.Dimensions {
+	size := image.Pt(gtx.Dp(width), gtx.Dp(unit.Dp(32)))
+	gtx.Constraints.Min = size
+	gtx.Constraints.Max = size
+	paint.FillShape(gtx.Ops, colLine, clip.RRect{Rect: image.Rectangle{Max: size}, NE: 7, NW: 7, SE: 7, SW: 7}.Op(gtx.Ops))
+	inner := image.Rect(1, 1, size.X-1, size.Y-1)
+	paint.FillShape(gtx.Ops, colBGSoft, clip.RRect{Rect: inner, NE: 6, NW: 6, SE: 6, SW: 6}.Op(gtx.Ops))
+	defer clip.RRect{Rect: inner, NE: 6, NW: 6, SE: 6, SW: 6}.Push(gtx.Ops).Pop()
+	return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return u.readerSegment(gtx, first, firstLabel, firstActive, true)
+		}),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return u.readerSegment(gtx, second, secondLabel, secondActive, false)
+		}),
+	)
+}
+
+func (u *appUI) readerSegment(gtx layout.Context, click *widget.Clickable, text string, active, first bool) layout.Dimensions {
+	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		size := gtx.Constraints.Max
+		defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
+		bg := color.NRGBA{}
+		switch {
+		case active:
+			bg = colAccentBG
+		case click.Hovered():
+			bg = colPanel2
+		}
+		if bg.A != 0 {
+			paint.Fill(gtx.Ops, bg)
+		}
+		if !first {
+			paint.FillShape(gtx.Ops, colLine, clip.Rect{Max: image.Pt(1, size.Y)}.Op())
+		}
+		labelColor := colDim
+		if active {
+			labelColor = colAccent
+		}
+		labelGtx := gtx
+		labelGtx.Constraints = layout.Exact(size)
+		layout.Center.Layout(labelGtx, func(gtx layout.Context) layout.Dimensions {
+			return u.label(gtx, text, unit.Sp(11), labelColor, 1)
+		})
+		return layout.Dimensions{Size: size}
 	})
 }
 

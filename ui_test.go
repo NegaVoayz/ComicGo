@@ -7,7 +7,10 @@ import (
 
 	"comicgo/internal/model"
 
+	"gioui.org/io/input"
 	"gioui.org/io/key"
+	"gioui.org/layout"
+	"gioui.org/op"
 )
 
 func TestLandscapeLeftCrop(t *testing.T) {
@@ -186,6 +189,12 @@ func TestReaderDirectionControlsPagingSides(t *testing.T) {
 			}
 		})
 	}
+	if got := readerSpatialPageDelta(-1, model.ReadingDirectionRTL); got != 1 {
+		t.Fatalf("RTL left button delta = %d, want 1", got)
+	}
+	if got := readerSpatialPageDelta(1, model.ReadingDirectionRTL); got != -1 {
+		t.Fatalf("RTL right button delta = %d, want -1", got)
+	}
 }
 
 func TestReaderDirectionControlsArrowKeys(t *testing.T) {
@@ -216,5 +225,31 @@ func TestReaderAcceptsOnlyVisibleSpreadSlots(t *testing.T) {
 	}
 	if r.acceptsPage(8, 0, 2) {
 		t.Fatal("reader accepted a page for another comic")
+	}
+}
+
+func TestFrameKeyEventsReachGlobalHandler(t *testing.T) {
+	var u appUI
+	u.screen = screenDetail
+	router := new(input.Router)
+	ops := new(op.Ops)
+
+	frame := func() {
+		gtx := layout.Context{
+			Ops:         ops,
+			Source:      router.Source(),
+			Constraints: layout.Exact(image.Pt(100, 100)),
+		}
+		u.handleKeyEvents(gtx)
+		router.Frame(ops)
+		ops.Reset()
+	}
+
+	frame()
+	router.Queue(key.Event{Name: key.NameEscape, State: key.Press})
+	frame()
+
+	if u.screen != screenShelf {
+		t.Fatalf("screen = %v after Escape, want shelf", u.screen)
 	}
 }

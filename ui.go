@@ -103,6 +103,7 @@ type appUI struct {
 		hasOrigin bool
 		editorHit bool
 	}
+	keyTag        struct{}
 	editorFocus   map[*widget.Editor]*editorFocusState
 	focusedEditor *widget.Editor
 
@@ -317,8 +318,6 @@ func (u *appUI) run() error {
 			} else {
 				u.detachDrop()
 			}
-		case key.Event:
-			u.handleKey(ev)
 		case app.DestroyEvent:
 			u.saveReaderProgressSync()
 			return ev.Err
@@ -622,6 +621,7 @@ func (u *appUI) layout(gtx layout.Context) {
 	}
 	u.layoutToasts(gtx)
 	u.trackPointerPress(gtx)
+	u.handleKeyEvents(gtx)
 }
 
 func (u *appUI) trackPointerPress(gtx layout.Context) {
@@ -644,6 +644,22 @@ func (u *appUI) trackPointerPress(gtx layout.Context) {
 	}
 	if hadPress && !u.press.editorHit && u.focusedEditor != nil {
 		gtx.Execute(key.FocusCmd{})
+	}
+}
+
+// handleKeyEvents receives otherwise-unhandled key presses at the end of the
+// frame. Widgets such as the page editor get first refusal because they layout
+// earlier and explicitly filter the keys they consume.
+func (u *appUI) handleKeyEvents(gtx layout.Context) {
+	event.Op(gtx.Ops, &u.keyTag)
+	for {
+		ev, ok := gtx.Event(key.Filter{})
+		if !ok {
+			return
+		}
+		if ke, ok := ev.(key.Event); ok {
+			u.handleKey(ke)
+		}
 	}
 }
 
