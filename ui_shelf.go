@@ -1098,18 +1098,35 @@ func (u *appUI) layoutDetail(gtx layout.Context) layout.Dimensions {
 
 func (u *appUI) layoutDetailTop(gtx layout.Context) layout.Dimensions {
 	gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(52))
-	paint.Fill(gtx.Ops, colBGSoft)
-	return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Horizontal, Gap: 8, Alignment: layout.Middle}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.detail.back, "< Library", buttonStyle{})
-			}),
-			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{} }),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.button(gtx, &u.detail.edit, "Edit metadata", buttonStyle{})
-			}),
-		)
-	})
+	return layout.Stack{}.Layout(gtx,
+		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
+			gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(52))
+			gtx.Constraints.Max.Y = gtx.Constraints.Min.Y
+			paint.Fill(gtx.Ops, colBGSoft)
+			paint.FillShape(gtx.Ops, colLine, clip.Rect{Max: image.Pt(gtx.Constraints.Max.X, 1)}.Op())
+			return layout.Dimensions{Size: gtx.Constraints.Max}
+		}),
+		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
+			gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(52))
+			gtx.Constraints.Max.Y = gtx.Constraints.Min.Y
+			inset := captionContentInsets(52)
+			inset.Top = 0
+			inset.Bottom = 0
+			return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Horizontal, Gap: 8, Alignment: layout.Middle}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return u.button(gtx, &u.detail.back, "< Library", buttonStyle{})
+					}),
+					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+						return u.layoutCaptionMoveArea(gtx)
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return u.button(gtx, &u.detail.edit, "Edit metadata", buttonStyle{})
+					}),
+				)
+			})
+		}),
+	)
 }
 
 func (u *appUI) layoutDetailBody(gtx layout.Context, tags []string) layout.Dimensions {

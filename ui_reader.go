@@ -331,6 +331,9 @@ func (u *appUI) layoutReader(gtx layout.Context) layout.Dimensions {
 		}
 	}
 	dims := layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.layoutReaderCaption(gtx)
+		}),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			return u.layoutReaderStage(gtx)
 		}),
@@ -340,6 +343,26 @@ func (u *appUI) layoutReader(gtx layout.Context) layout.Dimensions {
 	)
 	u.handleReaderKeyEvents(gtx)
 	return dims
+}
+
+func (u *appUI) layoutReaderCaption(gtx layout.Context) layout.Dimensions {
+	height := gtx.Dp(unit.Dp(36))
+	gtx.Constraints.Min.Y = height
+	gtx.Constraints.Max.Y = height
+	defer clip.Rect{Max: image.Pt(gtx.Constraints.Max.X, height)}.Push(gtx.Ops).Pop()
+	paint.Fill(gtx.Ops, colBGSoft)
+	paint.FillShape(gtx.Ops, colLine, clip.Rect{Max: image.Pt(gtx.Constraints.Max.X, 1)}.Op())
+	inset := captionContentInsets(36)
+	inset.Top = 0
+	inset.Bottom = 0
+	return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return u.chrome.decorations.LayoutMove(gtx, func(gtx layout.Context) layout.Dimensions {
+			layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return u.label(gtx, "ComicGo  /  "+u.reader.title, unit.Sp(12), colDim, 1)
+			})
+			return layout.Dimensions{Size: gtx.Constraints.Max}
+		})
+	})
 }
 
 func (u *appUI) moveReaderSide(side int) {

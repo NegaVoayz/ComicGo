@@ -250,8 +250,8 @@ func queryDroppedFiles(hdrop uintptr) []string {
 
 const uintptrSize = unsafe.Sizeof(uintptr(0))
 
-func (u *appUI) attachDrop(hwnd uintptr) {
-	if hwnd == 0 || u.dropTarget != nil {
+func attachWindowsDrop(backend *windowsWindowChromeBackend, hwnd uintptr) {
+	if hwnd == 0 || backend.dropTarget != nil {
 		return
 	}
 	hr, _, _ := procOleInitialize.Call(0)
@@ -259,31 +259,31 @@ func (u *appUI) attachDrop(hwnd uintptr) {
 		log.Printf("initialize OLE for file drop: %#x", hr)
 		return
 	}
-	u.oleInitialized = true
-	target := &winDropTarget{vtbl: &winDropVtbl, refs: 1, ui: u}
+	backend.oleInitialized = true
+	target := &winDropTarget{vtbl: &winDropVtbl, refs: 1, ui: backend.ui}
 	target.pinner.Pin(target)
-	u.dropTarget = target
-	u.dropHWND = hwnd
+	backend.dropTarget = target
+	backend.dropHWND = hwnd
 	hr, _, _ = procRegisterDragDrop.Call(hwnd, uintptr(unsafe.Pointer(target)))
 	if int32(hr) < 0 {
 		log.Printf("RegisterDragDrop: %#x", hr)
-		u.detachDrop()
+		detachWindowsDrop(target, hwnd, true)
+		backend.dropTarget = nil
+		backend.dropHWND = 0
+		backend.oleInitialized = false
 	}
 }
 
-func (u *appUI) detachDrop() {
-	target, ok := u.dropTarget.(*winDropTarget)
+func detachWindowsDrop(value any, hwnd uintptr, oleInitialized bool) {
+	target, ok := value.(*winDropTarget)
 	if !ok || target == nil {
 		return
 	}
-	u.dropTarget = nil
-	if u.dropHWND != 0 {
-		procRevokeDragDrop.Call(u.dropHWND)
-		u.dropHWND = 0
+	if hwnd != 0 {
+		procRevokeDragDrop.Call(hwnd)
 	}
 	target.pinner.Unpin()
-	if u.oleInitialized {
+	if oleInitialized {
 		procOleUninitialize.Call()
-		u.oleInitialized = false
 	}
 }

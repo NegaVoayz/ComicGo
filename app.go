@@ -265,7 +265,7 @@ func (a *App) AddLibrary(dir string) error {
 		return fmt.Errorf("not a folder: %s", dir)
 	}
 	for _, r := range a.settings.LibraryRoots {
-		if strings.EqualFold(cleanPath(r), cleanPath(dir)) {
+		if samePath(r, dir) {
 			return nil // already added
 		}
 	}
@@ -286,7 +286,7 @@ func (a *App) AddLibrary(dir string) error {
 func (a *App) RemoveLibrary(dir string) error {
 	var kept []string
 	for _, r := range a.settings.LibraryRoots {
-		if !strings.EqualFold(cleanPath(r), cleanPath(dir)) {
+		if !samePath(r, dir) {
 			kept = append(kept, r)
 		}
 	}
@@ -1177,8 +1177,18 @@ func rowToMeta(r index.Row) model.Meta {
 	}
 }
 
-func cleanPath(p string) string {
-	return strings.ToLower(strings.ReplaceAll(p, "\\", "/"))
+func samePath(a, b string) bool {
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if goruntime.GOOS == "windows" {
+		return strings.EqualFold(filepath.ToSlash(a), filepath.ToSlash(b))
+	}
+	if a == b {
+		return true
+	}
+	ai, aerr := os.Stat(a)
+	bi, berr := os.Stat(b)
+	return aerr == nil && berr == nil && os.SameFile(ai, bi)
 }
 
 func openCoverRaw(path string) ([]byte, error) {

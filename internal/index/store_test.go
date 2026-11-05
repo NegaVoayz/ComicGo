@@ -157,14 +157,15 @@ func TestMovePathKeepsIdentity(t *testing.T) {
 }
 
 func TestIsWithin(t *testing.T) {
-	dir := `C:\library\sub`
-	if !IsWithin(dir, `C:\library\sub\a.cbz`) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "sub")
+	if !IsWithin(dir, filepath.Join(dir, "a.cbz")) {
 		t.Error("should be within")
 	}
-	if IsWithin(dir, `C:\library\other\a.cbz`) {
+	if IsWithin(dir, filepath.Join(root, "other", "a.cbz")) {
 		t.Error("sibling should not be within")
 	}
-	if IsWithin(`C:\library`, `C:\library\a.cbz`) {
+	if IsWithin(root, filepath.Join(root, "a.cbz")) {
 		// dir itself is a root; its files are within
 	} else {
 		t.Error("direct child should be within")

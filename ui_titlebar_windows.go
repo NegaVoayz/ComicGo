@@ -3,45 +3,363 @@
 package main
 
 import (
-	"image/color"
+	"image"
+	"log"
+	"sync"
 	"unsafe"
 
+	"gioui.org/app"
 	"golang.org/x/sys/windows"
 )
 
 const (
-	dwmwaUseImmersiveDarkMode = 20
-	dwmwaBorderColor          = 34
-	dwmwaCaptionColor         = 35
-	dwmwaTextColor            = 36
+	wmNull            = 0x0000
+	wmContextMenu     = 0x007b
+	wmNCHitTest       = 0x0084
+	wmNCMouseMove     = 0x00a0
+	wmNCLButtonDown   = 0x00a1
+	wmNCLButtonUp     = 0x00a2
+	wmNCLButtonDblClk = 0x00a3
+	wmNCRButtonUp     = 0x00a5
+	wmSysKeyDown      = 0x0104
+	wmSysCommand      = 0x0112
+	wmRButtonUp       = 0x0205
+	wmNCMouseLeave    = 0x02a2
+	htClient          = 1
+	htMinButton       = 8
+	htMaxButton       = 9
+	htClose           = 20
+	tmeLeave          = 0x00000002
+	tmeNonClient      = 0x00000010
+	tpmRightButton    = 0x0002
+	tpmReturnCmd      = 0x0100
+	vkSpace           = 0x20
 )
+
+type trackMouseEvent struct {
+	Size      uint32
+	Flags     uint32
+	Track     windows.Handle
+	HoverTime uint32
+}
+
+type winPoint struct {
+	X int32
+	Y int32
+}
+
+type winRect struct {
+	Left   int32
+	Top    int32
+	Right  int32
+	Bottom int32
+}
+
+type windowsWindowChromeBackend struct {
+	ui *appUI
+
+	mu         sync.RWMutex
+	hwnd       uintptr
+	oldWndProc uintptr
+	regions    chromeHitRegions
+
+	dropTarget     any
+	dropHWND       uintptr
+	oleInitialized bool
+}
 
 var (
-	dwmapi                    = windows.NewLazySystemDLL("dwmapi.dll")
-	procDwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
+	user32                  = windows.NewLazySystemDLL("user32.dll")
+	procSetWindowLongPtr    = user32.NewProc("SetWindowLongPtrW")
+	procCallWindowProc      = user32.NewProc("CallWindowProcW")
+	procTrackMouseEvent     = user32.NewProc("TrackMouseEvent")
+	procScreenToClient      = user32.NewProc("ScreenToClient")
+	procClientToScreen      = user32.NewProc("ClientToScreen")
+	procGetWindowRect       = user32.NewProc("GetWindowRect")
+	procGetSystemMenu       = user32.NewProc("GetSystemMenu")
+	procTrackPopupMenu      = user32.NewProc("TrackPopupMenu")
+	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	procSendMessage         = user32.NewProc("SendMessageW")
+	procPostMessage         = user32.NewProc("PostMessageW")
+	chromeSubclassCallback  = windows.NewCallback(chromeWindowProc)
+	chromeBackendsByWindow  sync.Map
 )
 
-func applyDarkTitleBar(hwnd uintptr) {
+func newWindowChromeBackend(ui *appUI) windowChromeBackend {
+	return &windowsWindowChromeBackend{ui: ui}
+}
+
+func (b *windowsWindowChromeBackend) handlePlatformEvent(ev any) bool {
+	view, ok := ev.(app.Win32ViewEvent)
+	if !ok {
+		return false
+	}
+	if view.Valid() {
+		b.attach(view.HWND)
+	} else {
+		b.close()
+	}
+	return true
+}
+
+func (b *windowsWindowChromeBackend) attach(hwnd uintptr) {
 	if hwnd == 0 {
 		return
 	}
-	setDWMAttribute(hwnd, dwmwaUseImmersiveDarkMode, 1)
-	// Only Windows 11 recognizes these color attributes. Older systems return
-	// an error, which is harmless because immersive dark mode still applies.
-	setDWMAttribute(hwnd, dwmwaCaptionColor, colorRef(colBG))
-	setDWMAttribute(hwnd, dwmwaTextColor, colorRef(colText))
-	setDWMAttribute(hwnd, dwmwaBorderColor, colorRef(colLine))
-}
+	b.mu.Lock()
+	if b.hwnd == hwnd && b.oldWndProc != 0 {
+		b.mu.Unlock()
+		return
+	}
+	b.hwnd = hwnd
+	b.mu.Unlock()
 
-func setDWMAttribute(hwnd uintptr, attribute uint32, value uint32) {
-	procDwmSetWindowAttribute.Call(
+	chromeBackendsByWindow.Store(hwnd, b)
+	old, _, err := procSetWindowLongPtr.Call(
 		hwnd,
-		uintptr(attribute),
-		uintptr(unsafe.Pointer(&value)),
-		unsafe.Sizeof(value),
+		^uintptr(3), // GWLP_WNDPROC
+		chromeSubclassCallback,
 	)
+	if old == 0 {
+		log.Printf("SetWindowLongPtr failed for HWND %#x: %v", hwnd, err)
+		chromeBackendsByWindow.Delete(hwnd)
+	} else {
+		b.mu.Lock()
+		b.oldWndProc = old
+		b.mu.Unlock()
+	}
+	b.attachDrop(hwnd)
 }
 
-func colorRef(c color.NRGBA) uint32 {
-	return uint32(c.R) | uint32(c.G)<<8 | uint32(c.B)<<16
+func (b *windowsWindowChromeBackend) setCaptionRegions(regions chromeHitRegions) {
+	b.mu.Lock()
+	b.regions = regions
+	b.mu.Unlock()
+}
+
+func (b *windowsWindowChromeBackend) close() {
+	b.mu.Lock()
+	hwnd, oldWndProc := b.hwnd, b.oldWndProc
+	b.hwnd = 0
+	b.oldWndProc = 0
+	b.regions = chromeHitRegions{}
+	b.mu.Unlock()
+
+	if hwnd != 0 && oldWndProc != 0 {
+		procSetWindowLongPtr.Call(hwnd, ^uintptr(3), oldWndProc)
+		chromeBackendsByWindow.Delete(hwnd)
+	}
+	b.detachDrop()
+}
+
+func chromeWindowProc(hwnd, message, wParam, lParam, subclassID, refData uintptr) uintptr {
+	value, ok := chromeBackendsByWindow.Load(hwnd)
+	if !ok {
+		return callWindowProc(0, hwnd, message, wParam, lParam)
+	}
+	b := value.(*windowsWindowChromeBackend)
+
+	switch message {
+	case wmNCHitTest:
+		part := b.captionPartAtScreen(lParam)
+		if part != chromeNone {
+			return hitTestForChromePart(part)
+		}
+	case wmNCRButtonUp:
+		if b.captionContainsScreenPoint(lParam) {
+			b.showSystemMenu(lParam)
+			return 0
+		}
+	case wmRButtonUp:
+		if b.captionContainsClientPoint(lParam) {
+			x, y := signedPackedPoint(lParam)
+			point := winPoint{X: int32(x), Y: int32(y)}
+			procClientToScreen.Call(hwnd, uintptr(unsafe.Pointer(&point)))
+			b.showSystemMenu(packWinPoint(point))
+			return 0
+		}
+	case wmContextMenu:
+		if b.captionContainsScreenPoint(lParam) {
+			b.showSystemMenu(lParam)
+			return 0
+		}
+	case wmSysKeyDown:
+		if wParam == vkSpace && lParam&(1<<29) != 0 {
+			b.showSystemMenuAtWindowCenter()
+			return 0
+		}
+	case wmNCMouseMove:
+		part := chromePartFromHitTest(uint32(wParam))
+		b.postHover(part)
+		track := trackMouseEvent{
+			Size:  uint32(unsafe.Sizeof(trackMouseEvent{})),
+			Flags: tmeLeave | tmeNonClient,
+			Track: windows.Handle(hwnd),
+		}
+		procTrackMouseEvent.Call(uintptr(unsafe.Pointer(&track)))
+		return 0
+	case wmNCMouseLeave:
+		b.postHover(chromeNone)
+		return 0
+	case wmNCLButtonDown, wmNCLButtonDblClk:
+		part := chromePartFromHitTest(uint32(wParam))
+		if part != chromeNone {
+			b.ui.post(chromeActionEvent{part: part})
+			return 0
+		}
+	case wmNCLButtonUp:
+		if part := chromePartFromHitTest(uint32(wParam)); part != chromeNone {
+			return 0
+		}
+	}
+	b.mu.RLock()
+	oldWndProc := b.oldWndProc
+	b.mu.RUnlock()
+	return callWindowProc(oldWndProc, hwnd, message, wParam, lParam)
+}
+
+func callWindowProc(oldWndProc, hwnd, message, wParam, lParam uintptr) uintptr {
+	result, _, _ := procCallWindowProc.Call(oldWndProc, hwnd, message, wParam, lParam)
+	return result
+}
+
+func (b *windowsWindowChromeBackend) captionPartAtScreen(lParam uintptr) chromePart {
+	x, y := signedPackedPoint(lParam)
+	point := winPoint{X: int32(x), Y: int32(y)}
+	b.mu.RLock()
+	hwnd := b.hwnd
+	regions := b.regions
+	b.mu.RUnlock()
+	if hwnd != 0 {
+		procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&point)))
+	}
+	return regions.at(image.Pt(int(point.X), int(point.Y)))
+}
+
+func (b *windowsWindowChromeBackend) captionContainsScreenPoint(lParam uintptr) bool {
+	x, y := signedPackedPoint(lParam)
+	point := winPoint{X: int32(x), Y: int32(y)}
+	b.mu.RLock()
+	hwnd := b.hwnd
+	caption := b.regions.Caption
+	b.mu.RUnlock()
+	if hwnd != 0 {
+		procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&point)))
+	}
+	return image.Pt(int(point.X), int(point.Y)).In(caption)
+}
+
+func (b *windowsWindowChromeBackend) captionContainsClientPoint(lParam uintptr) bool {
+	x, y := signedPackedPoint(lParam)
+	b.mu.RLock()
+	caption := b.regions.Caption
+	b.mu.RUnlock()
+	return image.Pt(x, y).In(caption)
+}
+
+func signedPackedPoint(lParam uintptr) (int, int) {
+	return int(int32(int16(lParam & 0xffff))), int(int32(int16((lParam >> 16) & 0xffff)))
+}
+
+func packWinPoint(point winPoint) uintptr {
+	x := uintptr(uint16(point.X))
+	y := uintptr(uint16(point.Y))
+	return x | y<<16
+}
+
+func chromePartFromHitTest(hit uint32) chromePart {
+	switch hit {
+	case htMinButton:
+		return chromeMinimize
+	case htMaxButton:
+		return chromeMaximize
+	case htClose:
+		return chromeClose
+	default:
+		return chromeNone
+	}
+}
+
+func hitTestForChromePart(part chromePart) uintptr {
+	switch part {
+	case chromeMinimize:
+		return htMinButton
+	case chromeMaximize:
+		return htMaxButton
+	case chromeClose:
+		return htClose
+	default:
+		return htClient
+	}
+}
+
+func (b *windowsWindowChromeBackend) postHover(part chromePart) {
+	b.ui.post(chromeHoverEvent{part: part})
+}
+
+func (b *windowsWindowChromeBackend) showSystemMenuAtWindowCenter() {
+	b.mu.RLock()
+	hwnd := b.hwnd
+	b.mu.RUnlock()
+	if hwnd == 0 {
+		return
+	}
+	var rect winRect
+	procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rect)))
+	b.showSystemMenu(packWinPoint(winPoint{
+		X: (rect.Left + rect.Right) / 2,
+		Y: rect.Top + (rect.Bottom-rect.Top)/4,
+	}))
+}
+
+func (b *windowsWindowChromeBackend) showSystemMenu(lParam uintptr) {
+	b.mu.RLock()
+	hwnd := b.hwnd
+	b.mu.RUnlock()
+	if hwnd == 0 {
+		return
+	}
+	menu, _, _ := procGetSystemMenu.Call(hwnd, 0)
+	if menu == 0 {
+		return
+	}
+	x, y := signedPackedPoint(lParam)
+	procSetForegroundWindow.Call(hwnd)
+	command, _, _ := procTrackPopupMenu.Call(
+		menu,
+		tpmRightButton|tpmReturnCmd,
+		uintptr(x),
+		uintptr(y),
+		0,
+		hwnd,
+		0,
+	)
+	if command != 0 {
+		procSendMessage.Call(hwnd, wmSysCommand, command, 0)
+		return
+	}
+	procPostMessage.Call(hwnd, wmNull, 0, 0)
+}
+
+func (b *windowsWindowChromeBackend) attachDrop(hwnd uintptr) {
+	b.mu.Lock()
+	if hwnd == 0 || b.dropTarget != nil {
+		b.mu.Unlock()
+		return
+	}
+	b.dropHWND = hwnd
+	b.mu.Unlock()
+	attachWindowsDrop(b, hwnd)
+}
+
+func (b *windowsWindowChromeBackend) detachDrop() {
+	b.mu.Lock()
+	target := b.dropTarget
+	hwnd := b.dropHWND
+	initialized := b.oleInitialized
+	b.dropTarget = nil
+	b.dropHWND = 0
+	b.oleInitialized = false
+	b.mu.Unlock()
+	detachWindowsDrop(target, hwnd, initialized)
 }

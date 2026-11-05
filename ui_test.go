@@ -1,16 +1,24 @@
 package main
 
 import (
+	"errors"
 	"image"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"comicgo/internal/model"
 
+	"gioui.org/app"
+	"gioui.org/f32"
 	"gioui.org/io/input"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
+	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/unit"
 	"gioui.org/widget"
 )
 
@@ -269,5 +277,171 @@ func TestReaderFooterControlsUseExactHitBounds(t *testing.T) {
 	}
 	if got := u.readerSegmentControl(gtx, 132, &first, "1 page", true, &second, "2 pages", false); got.Size != image.Pt(132, 32) {
 		t.Fatalf("segment control size = %v, want 132x32", got.Size)
+	}
+}
+
+func TestCaptionControlHitRegions(t *testing.T) {
+	regions := captionHitRegions(1200, 52, 1)
+	tests := []struct {
+		name string
+		part chromePart
+	}{
+		{name: "minimize", part: chromeMinimize},
+		{name: "maximize", part: chromeMaximize},
+		{name: "close", part: chromeClose},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rect := chromeRegionForPart(regions, tc.part)
+			if rect.Empty() {
+				t.Fatalf("%s hit region is empty", tc.name)
+			}
+			center := rect.Min.Add(image.Pt(rect.Dx()/2, rect.Dy()/2))
+			if got := regions.at(center); got != tc.part {
+				t.Fatalf("hit at %v = %v, want %v", center, got, tc.part)
+			}
+		})
+	}
+	if got := regions.at(image.Pt(600, 20)); got != chromeNone {
+		t.Fatalf("content hit = %v, want chromeNone", got)
+	}
+	if !image.Pt(600, 20).In(regions.Caption) {
+		t.Fatal("caption context-menu region does not cover the title strip")
+	}
+}
+
+func chromeRegionForPart(regions chromeHitRegions, part chromePart) image.Rectangle {
+	switch part {
+	case chromeMinimize:
+		return regions.Minimize
+	case chromeMaximize:
+		return regions.Maximize
+	case chromeClose:
+		return regions.Close
+	default:
+		return image.Rectangle{}
+	}
+}
+
+func TestChromeActionTracksMaximizedState(t *testing.T) {
+	if got := chromeAction(chromeMaximize, false); got != system.ActionMaximize {
+		t.Fatalf("windowed maximize action = %v", got)
+	}
+	if got := chromeAction(chromeMaximize, true); got != system.ActionUnmaximize {
+		t.Fatalf("maximized maximize action = %v", got)
+	}
+	if got := chromeAction(chromeClose, false); got != system.ActionClose {
+		t.Fatalf("close action = %v", got)
+	}
+}
+
+func TestWindowConfigUpdatesChromeState(t *testing.T) {
+	var u appUI
+	u.applyWindowConfig(app.Config{Mode: app.Maximized, Focused: true})
+	if !u.chrome.maximized || !u.chrome.focused {
+		t.Fatalf("maximized chrome = %+v", u.chrome)
+	}
+	u.applyWindowConfig(app.Config{Mode: app.Windowed, Focused: false})
+	if u.chrome.maximized || u.chrome.focused {
+		t.Fatalf("restored chrome = %+v", u.chrome)
+	}
+}
+
+func TestSamePathUsesPlatformIdentity(t *testing.T) {
+	root := t.TempDir()
+	if !samePath(root, filepath.Join(root, ".")) {
+		t.Fatal("same directory with a normalized suffix was not recognized")
+	}
+	if samePath(root, filepath.Join(root, "..")) {
+		t.Fatal("different directories were treated as identical")
+	}
+	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
+		if samePath(filepath.Join(root, "Comics"), filepath.Join(root, "comics")) {
+			t.Fatal("case-distinct Unix paths were treated as identical")
+		}
+	}
+}
+
+func TestDialogPortalErrorIsActionable(t *testing.T) {
+	err := errors.New("The name org.freedesktop.portal.Desktop was not provided by any .service files")
+	msg := dialogErrorMessage(err)
+	if !strings.Contains(msg, "xdg-desktop-portal") {
+		t.Fatalf("portal error message = %q", msg)
+	}
+}
+
+func TestTopBarDragDoesNotCoverControls(t *testing.T) {
+	u := newAppUI(nil)
+	u.settings.LibraryRoots = []string{filepath.Join(t.TempDir(), "Comics")}
+	u.top.rootRemove = make([]widget.Clickable, 1)
+	u.indexed = 318
+
+	router := new(input.Router)
+	ops := new(op.Ops)
+	gtx := layout.Context{
+		Ops:         ops,
+		Source:      router.Source(),
+		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+		Constraints: layout.Exact(image.Pt(1200, 52)),
+	}
+	u.layoutTopbar(gtx)
+	router.Frame(ops)
+
+	if action, ok := router.ActionAt(f32.Pt(500, 26)); !ok || action != system.ActionMove {
+		t.Fatalf("empty title bar action = %v, %v; want ActionMove", action, ok)
+	}
+	if action, ok := router.ActionAt(f32.Pt(748, 26)); ok && action == system.ActionMove {
+		t.Fatalf("Import button action = %v, %v; title bar move must not cover it", action, ok)
+	}
+}
+
+func TestTopBarImportButtonStillClicks(t *testing.T) {
+	u := newAppUI(nil)
+	u.settings.LibraryRoots = []string{filepath.Join(t.TempDir(), "Comics")}
+	u.top.rootRemove = make([]widget.Clickable, 1)
+	u.indexed = 318
+
+	router := new(input.Router)
+	ops := new(op.Ops)
+	frame := func() {
+		gtx := layout.Context{
+			Ops:         ops,
+			Source:      router.Source(),
+			Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Exact(image.Pt(1200, 52)),
+		}
+		u.layoutTopbar(gtx)
+		router.Frame(ops)
+		ops.Reset()
+	}
+	frame()
+	var position f32.Point
+	for x := 0; x < 1200; x += 2 {
+		probe := f32.Pt(float32(x), 26)
+		router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: probe})
+		frame()
+		if u.top.importToggle.Hovered() {
+			position = probe
+			break
+		}
+	}
+	if position == (f32.Point{}) {
+		t.Fatal("could not locate the Import button")
+	}
+	router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: position})
+	frame()
+	router.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1, Buttons: pointer.ButtonPrimary, Position: position})
+	frame()
+	router.Queue(pointer.Event{Kind: pointer.Release, Source: pointer.Mouse, PointerID: 1, Position: position})
+	frame()
+	if !u.importMenu {
+		t.Fatal("Import click did not open the import menu")
+	}
+	if u.importMenuArmed {
+		t.Fatal("Import menu became interactive in the click frame")
+	}
+	frame()
+	if !u.importMenuArmed {
+		t.Fatal("Import menu did not become visible on the following frame")
 	}
 }

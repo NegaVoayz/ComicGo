@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: go build -trimpath -ldflags="-s -w -H=windowsgui -X 'gioui.org/app.ID=io.comicgo.ComicGo'" -o build/bin/comicgo.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: comicgo-windows-amd64
+          path: build/bin/comicgo.exe
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install Gio dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libwayland-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libgles2-mesa-dev \
+            libegl1-mesa-dev \
+            libffi-dev \
+            libvulkan-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxxf86vm-dev \
+            libegl-mesa0 \
+            libglx-mesa0 \
+            libgl1-mesa-dri \
+            libgbm1 \
+            libegl1 \
+            mesa-vulkan-drivers \
+            xvfb
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Package Debian
+        run: VERSION=0.1.0 ARCH=amd64 ./scripts/package-linux.sh
+      - name: Smoke launch
+        run: |
+          set +e
+          timeout 8s xvfb-run -a build/bin/comicgo >/tmp/comicgo.log 2>&1
+          status=$?
+          cat /tmp/comicgo.log
+          test "$status" -eq 124
+      - uses: actions/upload-artifact@v4
+        with:
+          name: comicgo-linux-amd64
+          path: build/bin/comicgo_0.1.0_amd64.deb
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Package application
+        run: VERSION=0.1.0 ./scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ComicGo-macos
+          path: build/bin/ComicGo.app

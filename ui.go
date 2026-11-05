@@ -118,19 +118,20 @@ type appUI struct {
 	search string
 	tags   []string
 
-	scanning       bool
-	scanDone       int
-	scanTotal      int
-	importing      bool
-	importDone     int
-	importTotal    int
-	importName     string
-	importMenu     bool
-	dragOver       bool
-	dialogBusy     bool
-	dropTarget     any
-	dropHWND       uintptr
-	oleInitialized bool
+	scanning        bool
+	scanDone        int
+	scanTotal       int
+	importing       bool
+	importDone      int
+	importTotal     int
+	importName      string
+	importMenu      bool
+	importMenuArmed bool
+	dragOver        bool
+	dialogBusy      bool
+
+	chrome        windowChromeState
+	chromeBackend windowChromeBackend
 
 	aboutOpen     bool
 	about         model.About
@@ -272,6 +273,8 @@ func newAppUI(backend *App) *appUI {
 		coverLimit:   256,
 	}
 	ui.shelfList.Axis = layout.Vertical
+	ui.chrome.focused = true
+	ui.chromeBackend = newWindowChromeBackend(ui)
 	return ui
 }
 
@@ -293,11 +296,14 @@ func (u *appUI) run() error {
 		}
 	}
 	defer u.backend.Close()
-	defer u.detachDrop()
+	defer u.chromeBackend.close()
 
 	for {
 		ev := u.win.Event()
 		u.dialog.ListenEvents(ev)
+		if u.chromeBackend.handlePlatformEvent(ev) {
+			continue
+		}
 		switch ev := ev.(type) {
 		case app.FrameEvent:
 			for {
@@ -311,19 +317,19 @@ func (u *appUI) run() error {
 					goto nextEvent
 				}
 			}
-		case app.Win32ViewEvent:
-			if ev.Valid() {
-				u.attachDrop(ev.HWND)
-				applyDarkTitleBar(ev.HWND)
-			} else {
-				u.detachDrop()
-			}
+		case app.ConfigEvent:
+			u.applyWindowConfig(ev.Config)
 		case app.DestroyEvent:
 			u.saveReaderProgressSync()
 			return ev.Err
 		}
 	nextEvent:
 	}
+}
+
+func (u *appUI) applyWindowConfig(config app.Config) {
+	u.chrome.maximized = config.Mode == app.Maximized
+	u.chrome.focused = config.Focused
 }
 
 func (u *appUI) post(ev any) {
@@ -529,18 +535,35 @@ func (u *appUI) handleUIEvent(ev any) {
 	case dialogPathEvent:
 		u.dialogBusy = false
 		if ev.err != nil && !isDialogCancel(ev.err) {
-			u.toast(ev.err.Error(), toastError)
+			u.toast(dialogErrorMessage(ev.err), toastError)
 			return
 		}
 		if ev.path == "" {
 			return
 		}
 		u.handleDialogPath(ev.kind, ev.path)
+	case chromeActionEvent:
+		if u.win != nil {
+			u.win.Perform(chromeAction(ev.part, u.chrome.maximized))
+		}
+	case chromeHoverEvent:
+		u.chrome.hover = ev.part
 	}
 }
 
 func isDialogCancel(err error) bool {
 	return err == nil || err == explorer.ErrUserDecline
+}
+
+func dialogErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "org.freedesktop.portal.Desktop") {
+		return "File picker unavailable. Install and start xdg-desktop-portal and a desktop backend such as xdg-desktop-portal-gtk."
+	}
+	return msg
 }
 
 func (u *appUI) toast(msg string, kind toastKind) {
@@ -592,19 +615,20 @@ func (u *appUI) layout(gtx layout.Context) {
 	paint.Fill(gtx.Ops, colBG)
 	u.press.editorHit = false
 	u.focusedEditor = nil
+	defer u.chromeBackend.setCaptionRegions(u.chrome.regions)
 	if u.fatal != nil {
 		u.layoutFatal(gtx)
-		return
+	} else {
+		switch u.screen {
+		case screenShelf:
+			u.layoutShelf(gtx)
+		case screenDetail:
+			u.layoutDetail(gtx)
+		case screenReader:
+			u.layoutReader(gtx)
+		}
 	}
-	switch u.screen {
-	case screenShelf:
-		u.layoutShelf(gtx)
-	case screenDetail:
-		u.layoutDetail(gtx)
-	case screenReader:
-		u.layoutReader(gtx)
-	}
-	if u.importMenu {
+	if u.importMenu && u.importMenuArmed {
 		u.layoutImportMenu(gtx)
 	}
 	if u.aboutOpen {
@@ -620,6 +644,11 @@ func (u *appUI) layout(gtx layout.Context) {
 		u.layoutDropOverlay(gtx)
 	}
 	u.layoutToasts(gtx)
+	captionHeight := 52
+	if u.screen == screenReader {
+		captionHeight = 36
+	}
+	u.layoutCaptionControls(gtx, gtx.Dp(unit.Dp(captionHeight)))
 	u.trackPointerPress(gtx)
 }
 
@@ -669,6 +698,9 @@ func (u *appUI) layoutShelfBase(gtx layout.Context) layout.Dimensions {
 }
 
 func (u *appUI) layoutTopbar(gtx layout.Context) layout.Dimensions {
+	if u.importMenu && !u.importMenuArmed {
+		u.importMenuArmed = true
+	}
 	if len(u.top.rootRemove) != len(u.settings.LibraryRoots) {
 		u.top.rootRemove = make([]widget.Clickable, len(u.settings.LibraryRoots))
 	}
@@ -689,7 +721,12 @@ func (u *appUI) layoutTopbar(gtx layout.Context) layout.Dimensions {
 		u.backend.CancelScan()
 	}
 	if u.top.importToggle.Clicked(gtx) {
-		u.importMenu = !u.importMenu
+		if u.importMenu {
+			u.closeImportMenu()
+		} else {
+			u.importMenu = true
+			u.importMenuArmed = false
+		}
 	}
 	if u.top.reloadLayout.Clicked(gtx) {
 		if err := u.backend.ReloadLayout(); err != nil {
@@ -713,15 +750,29 @@ func (u *appUI) layoutTopbar(gtx layout.Context) layout.Dimensions {
 			gtx.Constraints.Min.Y = gtx.Dp(52)
 			gtx.Constraints.Max.Y = gtx.Dp(52)
 			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				inset := captionContentInsets(52)
+				inset.Top = 0
+				inset.Bottom = 0
+				return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					gtx.Constraints.Min.Y = 0
 					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle, Gap: 8}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							defer op.Offset(image.Pt(0, gtx.Dp(unit.Dp(1)))).Push(gtx.Ops).Pop()
-							return u.label(gtx, "ComicGo", unit.Sp(17), colText, 1)
+							width := gtx.Dp(unit.Dp(112))
+							gtx.Constraints.Min.X = width
+							gtx.Constraints.Max.X = width
+							gtx.Constraints.Min.Y = gtx.Constraints.Max.Y
+							return u.chrome.decorations.LayoutMove(gtx, func(gtx layout.Context) layout.Dimensions {
+								return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+									defer op.Offset(image.Pt(0, gtx.Dp(unit.Dp(1)))).Push(gtx.Ops).Pop()
+									return u.label(gtx, "ComicGo", unit.Sp(17), colText, 1)
+								})
+							})
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return u.layoutRoots(gtx)
 						}),
 						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-							return u.layoutRoots(gtx)
+							return u.layoutCaptionMoveArea(gtx)
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							if n := u.indexed; n > 0 {
@@ -735,7 +786,7 @@ func (u *appUI) layoutTopbar(gtx layout.Context) layout.Dimensions {
 							}
 							return layout.Flex{Axis: layout.Horizontal, Gap: 6}.Layout(gtx,
 								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-									return u.button(gtx, &u.top.importToggle, "Import", buttonStyle{primary: true, disabled: len(u.settings.LibraryRoots) == 0 || u.importing})
+									return u.layoutTopbarImportButton(gtx)
 								}),
 								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 									return u.button(gtx, &u.top.add, "+ Folder", buttonStyle{})
@@ -760,7 +811,9 @@ func (u *appUI) layoutTopbar(gtx layout.Context) layout.Dimensions {
 
 func (u *appUI) layoutRoots(gtx layout.Context) layout.Dimensions {
 	if len(u.settings.LibraryRoots) == 0 {
-		return u.label(gtx, "No library selected", unit.Sp(12), colDim, 1)
+		return u.chrome.decorations.LayoutMove(gtx, func(gtx layout.Context) layout.Dimensions {
+			return u.label(gtx, "No library selected", unit.Sp(12), colDim, 1)
+		})
 	}
 	defer clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops).Pop()
 	return layout.Flex{Axis: layout.Horizontal, Gap: 5, Alignment: layout.Middle}.Layout(gtx,
@@ -803,38 +856,54 @@ func (u *appUI) layoutScanControls(gtx layout.Context) layout.Dimensions {
 
 func (u *appUI) layoutImportMenu(gtx layout.Context) {
 	if u.top.menuClose.Clicked(gtx) {
-		u.importMenu = false
+		u.closeImportMenu()
 		return
 	}
+	u.top.menuClose.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: gtx.Constraints.Max}
+	})
+}
+
+func (u *appUI) layoutTopbarImportButton(gtx layout.Context) layout.Dimensions {
+	dims := u.button(gtx, &u.top.importToggle, "Import", buttonStyle{
+		primary:  true,
+		disabled: len(u.settings.LibraryRoots) == 0 || u.importing,
+	})
+	if !u.importMenu || !u.importMenuArmed {
+		return dims
+	}
+	record := op.Record(gtx.Ops)
+	buttonTop := (gtx.Dp(unit.Dp(52)) - dims.Size.Y) / 2
+	panelTop := gtx.Dp(unit.Dp(55)) - buttonTop
+	op.Offset(image.Pt(0, panelTop)).Add(gtx.Ops)
+	panelGtx := gtx
+	panelGtx.Constraints = layout.Constraints{
+		Max: image.Pt(gtx.Dp(unit.Dp(220)), gtx.Dp(unit.Dp(120))),
+	}
+	u.layoutImportPanel(panelGtx)
+	op.Defer(gtx.Ops, record.Stop())
+	return dims
+}
+
+func (u *appUI) layoutImportPanel(gtx layout.Context) layout.Dimensions {
 	if u.top.importFile.Clicked(gtx) {
-		u.importMenu = false
+		u.closeImportMenu()
 		u.chooseImportFile()
 	}
 	if u.top.importFolder.Clicked(gtx) {
-		u.importMenu = false
+		u.closeImportMenu()
 		u.chooseFolder("import-folder")
 	}
-	layout.Stack{Alignment: layout.NE}.Layout(gtx,
-		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-			return u.top.menuClose.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return layout.Dimensions{Size: gtx.Constraints.Max}
-			})
-		}),
-		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Top: unit.Dp(55), Right: unit.Dp(150)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return u.panel(gtx, unit.Dp(210), func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{Axis: layout.Vertical, Gap: 4}.Layout(gtx,
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.button(gtx, &u.top.importFile, "From archive file", buttonStyle{plain: true})
-						}),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.button(gtx, &u.top.importFolder, "From image folder", buttonStyle{plain: true})
-						}),
-					)
-				})
-			})
-		}),
-	)
+	return u.panel(gtx, unit.Dp(210), func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Vertical, Gap: 4}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.button(gtx, &u.top.importFile, "From archive file", buttonStyle{plain: true})
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.button(gtx, &u.top.importFolder, "From image folder", buttonStyle{plain: true})
+			}),
+		)
+	})
 }
 
 func (u *appUI) chooseFolder(kind string) {
@@ -927,13 +996,18 @@ func (u *appUI) handleKey(ev key.Event) {
 		case u.aboutOpen:
 			u.aboutOpen = false
 		case u.importMenu:
-			u.importMenu = false
+			u.closeImportMenu()
 		case u.closeRuleMenu():
 			// The filter or sort dropdown consumed Escape.
 		case u.screen == screenDetail:
 			u.screen = screenShelf
 		}
 	}
+}
+
+func (u *appUI) closeImportMenu() {
+	u.importMenu = false
+	u.importMenuArmed = false
 }
 
 // ---- common widgets ----
@@ -1165,7 +1239,9 @@ func (u *appUI) layoutRootChip(gtx layout.Context, name string, remove *widget.C
 				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						gtx.Constraints.Max.X = maxInt(0, gtx.Constraints.Max.X-closeSize)
-						return u.label(gtx, name, unit.Sp(12), colDim, 1)
+						return u.chrome.decorations.LayoutMove(gtx, func(gtx layout.Context) layout.Dimensions {
+							return u.label(gtx, name, unit.Sp(12), colDim, 1)
+						})
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return u.rootRemoveButton(gtx, remove, closeSize)

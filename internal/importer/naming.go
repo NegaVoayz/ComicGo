@@ -28,7 +28,11 @@ func DesiredName(source string, isDir bool) string {
 // DesiredStem returns DesiredName's filename without the ".zip" extension: the
 // folder's own name, or the archive name stripped of its recognized suffix.
 func DesiredStem(source string, isDir bool) string {
-	base := filepath.Base(strings.TrimRight(source, `/\`))
+	source = strings.TrimRight(source, `/\`)
+	base := source
+	if i := strings.LastIndexAny(source, `/\`); i >= 0 {
+		base = source[i+1:]
+	}
 	stem := base
 	if !isDir {
 		lower := strings.ToLower(base)

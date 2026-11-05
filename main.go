@@ -26,6 +26,6 @@ func windowOptions(window *app.Window) {
 		app.Title("ComicGo"),
 		app.Size(unit.Dp(1200), unit.Dp(820)),
 		app.MinSize(unit.Dp(900), unit.Dp(600)),
-		app.Decorated(true),
+		app.Decorated(false),
 	)
 }
