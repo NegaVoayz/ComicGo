@@ -11,6 +11,7 @@ import (
 	"gioui.org/io/key"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/widget"
 )
 
 func TestLandscapeLeftCrop(t *testing.T) {
@@ -251,5 +252,22 @@ func TestFrameKeyEventsReachGlobalHandler(t *testing.T) {
 
 	if u.screen != screenShelf {
 		t.Fatalf("screen = %v after Escape, want shelf", u.screen)
+	}
+}
+
+func TestReaderFooterControlsUseExactHitBounds(t *testing.T) {
+	u := newAppUI(nil)
+	ops := new(op.Ops)
+	gtx := layout.Context{
+		Ops:         ops,
+		Source:      new(input.Router).Source(),
+		Constraints: layout.Exact(image.Pt(800, 54)),
+	}
+	var button, first, second widget.Clickable
+	if got := u.readerFooterButton(gtx, &button, "Go", 42, buttonStyle{}); got.Size != image.Pt(42, 32) {
+		t.Fatalf("footer button size = %v, want 42x32", got.Size)
+	}
+	if got := u.readerSegmentControl(gtx, 132, &first, "1 page", true, &second, "2 pages", false); got.Size != image.Pt(132, 32) {
+		t.Fatalf("segment control size = %v, want 132x32", got.Size)
 	}
 }

@@ -450,7 +450,7 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 	return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Horizontal, Gap: 8, Alignment: layout.Middle}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.readerFooterButton(gtx, &u.reader.back, "< Library", buttonStyle{})
+				return u.readerFooterButton(gtx, &u.reader.back, "< Library", 84, buttonStyle{})
 			}),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -470,7 +470,7 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 				return u.editor(gtx, &u.reader.pageEditor, "Page", 34)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.readerFooterButton(gtx, &u.reader.goButton, "Go", buttonStyle{})
+				return u.readerFooterButton(gtx, &u.reader.goButton, "Go", 42, buttonStyle{})
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return u.readerSegmentControl(gtx, unit.Dp(132),
@@ -486,13 +486,13 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				leftDelta := readerSpatialPageDelta(-1, u.reader.direction)
-				return u.readerFooterButton(gtx, &u.reader.left, "<", buttonStyle{
+				return u.readerFooterButton(gtx, &u.reader.left, "<", 40, buttonStyle{
 					disabled: !readerCanMove(u.reader.page, u.reader.pageCount, u.reader.twoPage, leftDelta),
 				})
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				rightDelta := readerSpatialPageDelta(1, u.reader.direction)
-				return u.readerFooterButton(gtx, &u.reader.right, ">", buttonStyle{
+				return u.readerFooterButton(gtx, &u.reader.right, ">", 40, buttonStyle{
 					disabled: !readerCanMove(u.reader.page, u.reader.pageCount, u.reader.twoPage, rightDelta),
 				})
 			}),
@@ -500,8 +500,11 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 	})
 }
 
-func (u *appUI) readerFooterButton(gtx layout.Context, click *widget.Clickable, text string, style buttonStyle) layout.Dimensions {
-	gtx.Constraints.Min.Y = 0
+func (u *appUI) readerFooterButton(gtx layout.Context, click *widget.Clickable, text string, width unit.Dp, style buttonStyle) layout.Dimensions {
+	size := image.Pt(gtx.Dp(width), gtx.Dp(unit.Dp(32)))
+	gtx.Constraints.Min = size
+	gtx.Constraints.Max = size
+	style.centered = true
 	return u.button(gtx, click, text, style)
 }
 
