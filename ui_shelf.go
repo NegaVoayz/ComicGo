@@ -805,7 +805,6 @@ type detailState struct {
 	save         widget.Clickable
 	cancel       widget.Clickable
 	tagClicks    []widget.Clickable
-	bodyList     layout.List
 }
 
 type heroLoadedEvent struct {
@@ -823,7 +822,6 @@ func (u *appUI) openDetail(card model.ComicCard) {
 		authorEditor: widget.Editor{SingleLine: true},
 		tagsEditor:   widget.Editor{SingleLine: true},
 		sourceEditor: widget.Editor{SingleLine: true},
-		bodyList:     layout.List{Axis: layout.Vertical},
 	}
 	u.screen = screenDetail
 	go func() {
@@ -910,25 +908,26 @@ func (u *appUI) layoutDetailTop(gtx layout.Context) layout.Dimensions {
 }
 
 func (u *appUI) layoutDetailBody(gtx layout.Context, tags []string) layout.Dimensions {
-	viewportH := gtx.Constraints.Max.Y
-	return u.detail.bodyList.Layout(gtx, 1, func(gtx layout.Context, _ int) layout.Dimensions {
-		gtx.Constraints.Min.Y = viewportH
-		return layout.Inset{Top: unit.Dp(28), Bottom: unit.Dp(28), Left: unit.Dp(34), Right: unit.Dp(34)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				gap := minInt(gtx.Dp(unit.Dp(56)), maxInt(gtx.Dp(unit.Dp(24)), gtx.Constraints.Max.X/20))
-				return layout.Flex{Axis: layout.Horizontal, Gap: gap, Alignment: layout.Middle}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						width := minInt(gtx.Dp(unit.Dp(340)), gtx.Constraints.Max.X*34/100)
-						height := width * 4 / 3
-						return u.layoutDetailHero(gtx, width, height)
-					}),
-					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-						gtx.Constraints.Max.X = minInt(gtx.Constraints.Max.X, gtx.Dp(unit.Dp(680)))
-						return u.layoutDetailMeta(gtx, tags)
-					}),
-				)
-			})
-		})
+	return layout.Inset{Top: unit.Dp(28), Bottom: unit.Dp(28), Left: unit.Dp(34), Right: unit.Dp(34)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceSides}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				gtx.Constraints.Min.X = gtx.Constraints.Max.X
+				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					gap := minInt(gtx.Dp(unit.Dp(56)), maxInt(gtx.Dp(unit.Dp(24)), gtx.Constraints.Max.X/20))
+					return layout.Flex{Axis: layout.Horizontal, Gap: gap, Alignment: layout.Middle}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							width := minInt(gtx.Dp(unit.Dp(340)), gtx.Constraints.Max.X*34/100)
+							height := width * 4 / 3
+							return u.layoutDetailHero(gtx, width, height)
+						}),
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							gtx.Constraints.Max.X = minInt(gtx.Constraints.Max.X, gtx.Dp(unit.Dp(680)))
+							return u.layoutDetailMeta(gtx, tags)
+						}),
+					)
+				})
+			}),
+		)
 	})
 }
 
