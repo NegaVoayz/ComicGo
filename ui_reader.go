@@ -13,6 +13,7 @@ import (
 	"gioui.org/gesture"
 	"gioui.org/io/key"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
@@ -455,12 +456,17 @@ func (u *appUI) layoutReaderControls(gtx layout.Context) layout.Dimensions {
 				return u.readerFooterButton(gtx, &u.reader.back, "< Library", 84, buttonStyle{})
 			}),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return u.label(gtx, u.reader.title, unit.Sp(13), colText, 1)
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return u.label(gtx, u.readerPageSummary(), unit.Sp(11), colDim, 1)
+				return layout.Stack{Alignment: layout.W}.Layout(gtx,
+					layout.Stacked(func(gtx layout.Context) layout.Dimensions {
+						defer op.Offset(image.Pt(0, gtx.Dp(unit.Dp(6)))).Push(gtx.Ops).Pop()
+						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return u.label(gtx, u.reader.title, unit.Sp(13), colText, 1)
+							}),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								return u.label(gtx, u.readerPageSummary(), unit.Sp(11), colDim, 1)
+							}),
+						)
 					}),
 				)
 			}),

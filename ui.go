@@ -314,6 +314,7 @@ func (u *appUI) run() error {
 		case app.Win32ViewEvent:
 			if ev.Valid() {
 				u.attachDrop(ev.HWND)
+				applyDarkTitleBar(ev.HWND)
 			} else {
 				u.detachDrop()
 			}
