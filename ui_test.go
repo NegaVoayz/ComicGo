@@ -355,11 +355,12 @@ func TestRestoreGlyphMatchesWindowsGeometry(t *testing.T) {
 	if geometry.BracketStart.Y != geometry.BracketCorner.Y || geometry.BracketEnd.X != geometry.BracketCorner.X {
 		t.Fatalf("restore bracket is not a right angle: %+v", geometry)
 	}
-	if gap := geometry.Square.Min.Y - geometry.BracketStart.Y; gap < 2 {
-		t.Fatalf("restore top gap = %d; want at least 2 for a visible 1px gap", gap)
+	horizontalGap, verticalGap := captionRestoreGapRects(geometry)
+	if horizontalGap.Dy() != 1 || horizontalGap.Dx() <= 0 {
+		t.Fatalf("restore horizontal gap = %v; want a one-pixel strip", horizontalGap)
 	}
-	if gap := geometry.BracketCorner.X - geometry.Square.Max.X; gap < 2 {
-		t.Fatalf("restore right gap = %d; want at least 2 for a visible 1px gap", gap)
+	if verticalGap.Dx() != 1 || verticalGap.Dy() <= 0 {
+		t.Fatalf("restore vertical gap = %v; want a one-pixel strip", verticalGap)
 	}
 }
 
