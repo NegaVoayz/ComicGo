@@ -44,6 +44,7 @@ type windowChromeState struct {
 	focused     bool
 	hover       chromePart
 	regions     chromeHitRegions
+	lastAction  system.Action
 }
 
 type windowChromeBackend interface {
@@ -138,6 +139,12 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 	scale := gtx.Dp(unit.Dp(1))
 	u.chrome.regions = captionHitRegions(size.X, height, scale)
 	u.chrome.decorations.Maximized = u.chrome.maximized
+	if actions := u.chrome.decorations.Update(gtx); actions != 0 {
+		u.chrome.lastAction = actions
+		if u.win != nil {
+			u.win.Perform(actions)
+		}
+	}
 
 	if runtime.GOOS == "darwin" {
 		controls := []struct {
@@ -163,9 +170,6 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 		u.layoutWindowsCaptionButton(gtx, chromeClose, system.ActionClose, start+2*buttonWidth, buttonTop, buttonWidth, buttonHeight)
 	}
 
-	if actions := u.chrome.decorations.Update(gtx); actions != 0 {
-		u.win.Perform(actions)
-	}
 	return layout.Dimensions{Size: size}
 }
 

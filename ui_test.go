@@ -341,6 +341,57 @@ func TestChromeActionTracksMaximizedState(t *testing.T) {
 	}
 }
 
+func TestCaptionControlsReceiveClicksAboveDragSurface(t *testing.T) {
+	u := newAppUI(nil)
+	router := new(input.Router)
+	ops := new(op.Ops)
+	frame := func() {
+		gtx := layout.Context{
+			Ops:         ops,
+			Source:      router.Source(),
+			Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Exact(image.Pt(1200, 52)),
+		}
+		u.layoutTopbar(gtx)
+		u.layoutCaptionControls(gtx, 52)
+		router.Frame(ops)
+		ops.Reset()
+	}
+	frame()
+
+	regions := captionHitRegions(1200, 52, 1)
+	tests := []struct {
+		name string
+		part chromePart
+		want system.Action
+	}{
+		{name: "minimize", part: chromeMinimize, want: system.ActionMinimize},
+		{name: "maximize", part: chromeMaximize, want: system.ActionMaximize},
+		{name: "close", part: chromeClose, want: system.ActionClose},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rect := chromeRegionForPart(regions, tc.part)
+			position := f32.Pt(float32(rect.Min.X+rect.Dx()/2), float32(rect.Min.Y+rect.Dy()/2))
+			u.chrome.lastAction = 0
+			router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: position})
+			frame()
+			if !u.chrome.decorations.Clickable(chromeAction(tc.part, false)).Hovered() {
+				t.Fatalf("control at %v is not hovered", position)
+			}
+			router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: position})
+			frame()
+			router.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1, Buttons: pointer.ButtonPrimary, Position: position})
+			frame()
+			router.Queue(pointer.Event{Kind: pointer.Release, Source: pointer.Mouse, PointerID: 1, Position: position})
+			frame()
+			if u.chrome.lastAction != tc.want {
+				t.Fatalf("action = %v, want %v", u.chrome.lastAction, tc.want)
+			}
+		})
+	}
+}
+
 func TestRestoreGlyphMatchesWindowsGeometry(t *testing.T) {
 	geometry := captionRestoreGeometry(20, 20, 6)
 	if geometry.Square.Empty() || geometry.Square.Dx() != geometry.Square.Dy() {
