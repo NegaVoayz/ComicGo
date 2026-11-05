@@ -78,8 +78,8 @@ func captionHitRegions(width, height, scale int) chromeHitRegions {
 	right := width
 	button := captionButtonWidthDp * scale
 	buttonHeight := captionButtonHeightDp * scale
-	top := (height - buttonHeight) / 2
-	bottom := top + buttonHeight
+	top := 0
+	bottom := minInt(height, buttonHeight)
 	maximize := image.Rect(right-2*button, top, right-button, bottom)
 	close := image.Rect(right-button, top, right, bottom)
 	minimize := image.Rect(right-3*button, top, right-2*button, bottom)
@@ -154,7 +154,8 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 	} else {
 		buttonWidth := captionButtonWidthDp * scale
 		buttonHeight := captionButtonHeightDp * scale
-		buttonTop := (height - buttonHeight) / 2
+		buttonTop := 0
+		buttonHeight = minInt(height, buttonHeight)
 		start := size.X - 3*buttonWidth
 		u.layoutWindowsCaptionButton(gtx, chromeMinimize, system.ActionMinimize, start, buttonTop, buttonWidth, buttonHeight)
 		u.layoutWindowsCaptionButton(gtx, chromeMaximize, system.ActionMaximize, start+buttonWidth, buttonTop, buttonWidth, buttonHeight)
@@ -230,21 +231,22 @@ func (u *appUI) layoutMacCaptionButton(gtx layout.Context, part chromePart, acti
 func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.Point, maximized bool) {
 	cx := size.X / 2
 	cy := size.Y / 2
-	glyph := maxInt(5, size.Y/9)
+	glyph := maxInt(6, size.Y/7)
 	var path clip.Path
 	path.Begin(ops)
 	switch part {
 	case chromeMinimize:
-		path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy+4)))
-		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy+4)))
+		path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy)))
+		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy)))
 	case chromeMaximize:
 		if maximized {
-			path.MoveTo(f32.Pt(float32(cx-4), float32(cy-5)))
-			path.LineTo(f32.Pt(float32(cx+5), float32(cy-5)))
-			path.LineTo(f32.Pt(float32(cx+5), float32(cy+4)))
-			path.MoveTo(f32.Pt(float32(cx-5), float32(cy-4)))
-			path.LineTo(f32.Pt(float32(cx+4), float32(cy-4)))
-			path.LineTo(f32.Pt(float32(cx+4), float32(cy+5)))
+			inner := glyph - 2
+			path.MoveTo(f32.Pt(float32(cx-inner), float32(cy-glyph)))
+			path.LineTo(f32.Pt(float32(cx+glyph), float32(cy-glyph)))
+			path.LineTo(f32.Pt(float32(cx+glyph), float32(cy+inner)))
+			path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy-inner)))
+			path.LineTo(f32.Pt(float32(cx+inner), float32(cy-inner)))
+			path.LineTo(f32.Pt(float32(cx+inner), float32(cy+glyph)))
 		} else {
 			path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy-glyph)))
 			path.LineTo(f32.Pt(float32(cx+glyph), float32(cy-glyph)))
