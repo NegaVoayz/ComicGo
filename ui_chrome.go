@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	captionButtonWidthDp = 46
-	macCaptionAreaDp     = 74
+	captionButtonWidthDp  = 54
+	captionButtonHeightDp = 36
+	macCaptionAreaDp      = 74
 )
 
 type chromePart uint8
@@ -76,9 +77,12 @@ func captionHitRegions(width, height, scale int) chromeHitRegions {
 	}
 	right := width
 	button := captionButtonWidthDp * scale
-	maximize := image.Rect(right-2*button, 0, right-button, height)
-	close := image.Rect(right-button, 0, right, height)
-	minimize := image.Rect(right-3*button, 0, right-2*button, height)
+	buttonHeight := captionButtonHeightDp * scale
+	top := (height - buttonHeight) / 2
+	bottom := top + buttonHeight
+	maximize := image.Rect(right-2*button, top, right-button, bottom)
+	close := image.Rect(right-button, top, right, bottom)
+	minimize := image.Rect(right-3*button, top, right-2*button, bottom)
 	return chromeHitRegions{Minimize: minimize, Maximize: maximize, Close: close, Caption: caption}
 }
 
@@ -148,11 +152,13 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 			u.layoutMacCaptionButton(gtx, control.part, control.action, control.x, height)
 		}
 	} else {
-		buttonWidth := gtx.Dp(unit.Dp(captionButtonWidthDp))
+		buttonWidth := captionButtonWidthDp * scale
+		buttonHeight := captionButtonHeightDp * scale
+		buttonTop := (height - buttonHeight) / 2
 		start := size.X - 3*buttonWidth
-		u.layoutWindowsCaptionButton(gtx, chromeMinimize, system.ActionMinimize, start, buttonWidth, height)
-		u.layoutWindowsCaptionButton(gtx, chromeMaximize, system.ActionMaximize, start+buttonWidth, buttonWidth, height)
-		u.layoutWindowsCaptionButton(gtx, chromeClose, system.ActionClose, start+2*buttonWidth, buttonWidth, height)
+		u.layoutWindowsCaptionButton(gtx, chromeMinimize, system.ActionMinimize, start, buttonTop, buttonWidth, buttonHeight)
+		u.layoutWindowsCaptionButton(gtx, chromeMaximize, system.ActionMaximize, start+buttonWidth, buttonTop, buttonWidth, buttonHeight)
+		u.layoutWindowsCaptionButton(gtx, chromeClose, system.ActionClose, start+2*buttonWidth, buttonTop, buttonWidth, buttonHeight)
 	}
 
 	if actions := u.chrome.decorations.Update(gtx); actions != 0 {
@@ -161,10 +167,10 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 	return layout.Dimensions{Size: size}
 }
 
-func (u *appUI) layoutWindowsCaptionButton(gtx layout.Context, part chromePart, action system.Action, x, buttonWidth, height int) {
+func (u *appUI) layoutWindowsCaptionButton(gtx layout.Context, part chromePart, action system.Action, x, y, buttonWidth, buttonHeight int) {
 	child := gtx
-	child.Constraints = layout.Exact(image.Pt(buttonWidth, height))
-	offset := op.Offset(image.Pt(x, 0)).Push(gtx.Ops)
+	child.Constraints = layout.Exact(image.Pt(buttonWidth, buttonHeight))
+	offset := op.Offset(image.Pt(x, y)).Push(gtx.Ops)
 	defer offset.Pop()
 
 	click := u.chrome.decorations.Clickable(action)

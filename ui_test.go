@@ -296,6 +296,9 @@ func TestCaptionControlHitRegions(t *testing.T) {
 			if rect.Empty() {
 				t.Fatalf("%s hit region is empty", tc.name)
 			}
+			if rect.Dy() >= rect.Dx() {
+				t.Fatalf("%s control is %v; want landscape proportions", tc.name, rect.Size())
+			}
 			center := rect.Min.Add(image.Pt(rect.Dx()/2, rect.Dy()/2))
 			if got := regions.at(center); got != tc.part {
 				t.Fatalf("hit at %v = %v, want %v", center, got, tc.part)
