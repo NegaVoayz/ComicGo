@@ -27,7 +27,9 @@ const (
 	gridPad     = 14
 	rowsPerPage = 6
 	fetchRows   = 3
-	captionH    = 60
+	// Gio's label line boxes and compact tag buttons need more room than the
+	// browser caption, which previously clipped the tag row under the next cover.
+	captionH = 76
 )
 
 type sectionState struct {
