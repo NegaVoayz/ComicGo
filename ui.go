@@ -195,6 +195,7 @@ type sectionCardsEvent struct {
 	index    int
 	revision int
 	start    int
+	limit    int
 	cards    []model.ComicCard
 	err      error
 }
@@ -360,9 +361,7 @@ func (u *appUI) refreshShelf() {
 	go func() { u.post(indexedCountEvent{count: u.backend.CountComics("")}) }()
 	for i := range u.sections {
 		s := u.sections[i]
-		s.cards = make(map[int]*cardState)
 		s.pending = make(map[int]bool)
-		s.total = 0
 		u.requestSectionCount(i)
 	}
 }
@@ -438,9 +437,12 @@ func (u *appUI) handleUIEvent(ev any) {
 			return
 		}
 		for i, card := range ev.cards {
-			if _, exists := s.cards[ev.start+i]; !exists {
-				s.cards[ev.start+i] = newCardState(card)
-			}
+			s.cards[ev.start+i] = newCardState(card)
+			s.cardRevisions[ev.start+i] = ev.revision
+		}
+		for i := ev.start + len(ev.cards); i < ev.start+ev.limit; i++ {
+			delete(s.cards, i)
+			delete(s.cardRevisions, i)
 		}
 	case coverLoadedEvent:
 		delete(u.coverLoading, ev.id)

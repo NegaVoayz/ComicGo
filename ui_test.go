@@ -98,3 +98,34 @@ func TestRuleMenusAreExclusiveAndToggleClosed(t *testing.T) {
 		t.Fatalf("sort menu remained open after toggle: %q", second.menuKind)
 	}
 }
+
+func TestSearchSyncPreservesSourceCaret(t *testing.T) {
+	source := &sectionState{}
+	source.search.SetText("ka")
+	source.search.SetCaret(2, 2)
+	other := &sectionState{}
+	u := &appUI{sections: []*sectionState{source, other}}
+
+	u.syncSearchEditors("ka", source)
+
+	if _, col := source.search.CaretPos(); col != 2 {
+		t.Fatalf("source caret column = %d, want 2", col)
+	}
+	if got := other.search.Text(); got != "ka" {
+		t.Fatalf("other search text = %q, want %q", got, "ka")
+	}
+}
+
+func TestLoadedPageFromPreviousQueryNeedsReload(t *testing.T) {
+	s := &sectionState{
+		cards:         map[int]*cardState{0: {}},
+		cardRevisions: map[int]int{0: 3},
+	}
+
+	if !s.pageNeedsLoad(0, 1, 4) {
+		t.Fatal("page loaded for an older query was treated as current")
+	}
+	if s.pageNeedsLoad(0, 1, 3) {
+		t.Fatal("current, complete page was unnecessarily reloaded")
+	}
+}

@@ -36,22 +36,23 @@ const (
 type sectionState struct {
 	index int
 	model.LayoutSection
-	total       int
-	cards       map[int]*cardState
-	pending     map[int]bool
-	list        layout.List
-	search      widget.Editor
-	lastSearch  string
-	filterClick widget.Clickable
-	sortClick   widget.Clickable
-	sortWidth   int
-	menuKind    string
-	menuAnchor  image.Point
-	menuClose   widget.Clickable
-	menuClicks  []widget.Clickable
-	tagClicks   []widget.Clickable
-	clearTags   widget.Clickable
-	lastFirst   int
+	total         int
+	cards         map[int]*cardState
+	pending       map[int]bool
+	list          layout.List
+	search        widget.Editor
+	lastSearch    string
+	cardRevisions map[int]int
+	filterClick   widget.Clickable
+	sortClick     widget.Clickable
+	sortWidth     int
+	menuKind      string
+	menuAnchor    image.Point
+	menuClose     widget.Clickable
+	menuClicks    []widget.Clickable
+	tagClicks     []widget.Clickable
+	clearTags     widget.Clickable
+	lastFirst     int
 }
 
 type cardState struct {
@@ -80,6 +81,7 @@ func (u *appUI) resetSections() {
 			LayoutSection: section,
 			cards:         make(map[int]*cardState),
 			pending:       make(map[int]bool),
+			cardRevisions: make(map[int]int),
 		}
 		s.list.Axis = layout.Vertical
 		s.search.SingleLine = true
@@ -184,7 +186,7 @@ func (u *appUI) layoutSection(gtx layout.Context, s *sectionState, viewportH int
 	if text != s.lastSearch {
 		s.lastSearch = text
 		if text != u.search {
-			u.setSearch(text)
+			u.setSearch(text, s)
 		}
 	}
 
@@ -408,15 +410,8 @@ func (s *sectionState) ensureVisible(u *appUI, rows, cols int) {
 		if s.pending[p] {
 			continue
 		}
-		missing := false
 		limit := minInt(pageSize, s.total-p)
-		for i := p; i < p+limit; i++ {
-			if s.cards[i] == nil {
-				missing = true
-				break
-			}
-		}
-		if !missing {
+		if !s.pageNeedsLoad(p, limit, u.refresh) {
 			continue
 		}
 		s.pending[p] = true
@@ -431,9 +426,18 @@ func (s *sectionState) ensureVisible(u *appUI, rows, cols int) {
 		}
 		go func() {
 			cards, err := u.backend.GetComics(q)
-			u.post(sectionCardsEvent{index: index, revision: revision, start: p, cards: cards, err: err})
+			u.post(sectionCardsEvent{index: index, revision: revision, start: p, limit: limit, cards: cards, err: err})
 		}()
 	}
+}
+
+func (s *sectionState) pageNeedsLoad(page, limit, revision int) bool {
+	for i := page; i < page+limit; i++ {
+		if s.cards[i] == nil || s.cardRevisions[i] != revision {
+			return true
+		}
+	}
+	return false
 }
 
 func (u *appUI) layoutCardPlaceholder(gtx layout.Context, width int) layout.Dimensions {
@@ -623,13 +627,19 @@ func (u *appUI) setTags(tags []string) {
 	u.refreshShelf()
 }
 
-func (u *appUI) setSearch(text string) {
+func (u *appUI) setSearch(text string, source *sectionState) {
+	u.syncSearchEditors(text, source)
+	u.refreshShelf()
+}
+
+func (u *appUI) syncSearchEditors(text string, source *sectionState) {
 	u.search = text
 	for _, s := range u.sections {
-		s.search.SetText(text)
+		if s != source {
+			s.search.SetText(text)
+		}
 		s.lastSearch = text
 	}
-	u.refreshShelf()
 }
 
 func (u *appUI) query() string {
