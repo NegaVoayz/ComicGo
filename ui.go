@@ -83,6 +83,10 @@ type topbarState struct {
 	rootRemove   []widget.Clickable
 }
 
+type editorFocusState struct {
+	tag byte
+}
+
 type appUI struct {
 	ops     op.Ops
 	win     *app.Window
@@ -97,7 +101,10 @@ type appUI struct {
 		tag       struct{}
 		position  image.Point
 		hasOrigin bool
+		editorHit bool
 	}
+	editorFocus   map[*widget.Editor]*editorFocusState
+	focusedEditor *widget.Editor
 
 	settings    model.Settings
 	layoutDoc   model.LayoutDoc
@@ -567,6 +574,8 @@ func (u *appUI) dismissToast(id int) {
 
 func (u *appUI) layout(gtx layout.Context) {
 	paint.Fill(gtx.Ops, colBG)
+	u.press.editorHit = false
+	u.focusedEditor = nil
 	if u.fatal != nil {
 		u.layoutFatal(gtx)
 		return
@@ -604,15 +613,20 @@ func (u *appUI) trackPointerPress(gtx layout.Context) {
 	event.Op(gtx.Ops, &u.press.tag)
 	area.Pop()
 	pass.Pop()
+	hadPress := false
 	for {
 		ev, ok := gtx.Event(pointer.Filter{Target: &u.press.tag, Kinds: pointer.Press})
 		if !ok {
 			break
 		}
 		if press, ok := ev.(pointer.Event); ok && press.Kind == pointer.Press {
+			hadPress = true
 			u.press.position = press.Position.Round()
 			u.press.hasOrigin = true
 		}
+	}
+	if hadPress && !u.press.editorHit && u.focusedEditor != nil {
+		gtx.Execute(key.FocusCmd{})
 	}
 }
 
@@ -994,6 +1008,25 @@ func (u *appUI) editor(gtx layout.Context, editor *widget.Editor, hint string, h
 	if editor.SingleLine {
 		gtx.Constraints.Min.Y = gtx.Dp(height)
 	}
+	focus := u.editorFocusTag(editor)
+	if gtx.Focused(editor) {
+		u.focusedEditor = editor
+	}
+	pass := pointer.PassOp{}.Push(gtx.Ops)
+	area := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
+	event.Op(gtx.Ops, &focus.tag)
+	area.Pop()
+	pass.Pop()
+	for {
+		ev, ok := gtx.Event(pointer.Filter{Target: &focus.tag, Kinds: pointer.Press})
+		if !ok {
+			break
+		}
+		if press, ok := ev.(pointer.Event); ok && press.Kind == pointer.Press {
+			u.press.editorHit = true
+			gtx.Execute(key.FocusCmd{Tag: editor})
+		}
+	}
 	return layout.Stack{}.Layout(gtx,
 		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
 			size := image.Pt(gtx.Constraints.Max.X, maxInt(gtx.Constraints.Min.Y, gtx.Dp(height)))
@@ -1017,6 +1050,18 @@ func (u *appUI) editor(gtx layout.Context, editor *widget.Editor, hint string, h
 			})
 		}),
 	)
+}
+
+func (u *appUI) editorFocusTag(editor *widget.Editor) *editorFocusState {
+	if u.editorFocus == nil {
+		u.editorFocus = make(map[*widget.Editor]*editorFocusState)
+	}
+	focus := u.editorFocus[editor]
+	if focus == nil {
+		focus = &editorFocusState{}
+		u.editorFocus[editor] = focus
+	}
+	return focus
 }
 
 func (u *appUI) panel(gtx layout.Context, width unit.Dp, content layout.Widget) layout.Dimensions {
