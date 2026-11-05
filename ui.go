@@ -980,6 +980,22 @@ func (u *appUI) button(gtx layout.Context, click *widget.Clickable, label string
 	if style.compact {
 		inset = layout.Inset{Top: unit.Dp(1), Bottom: unit.Dp(1), Left: unit.Dp(3), Right: unit.Dp(3)}
 	}
+	if style.centered {
+		return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			size := image.Pt(gtx.Constraints.Max.X, maxInt(gtx.Constraints.Min.Y, gtx.Dp(unit.Dp(28))))
+			paint.FillShape(gtx.Ops, border, clip.RRect{Rect: image.Rectangle{Max: size}, NE: 6, NW: 6, SE: 6, SW: 6}.Op(gtx.Ops))
+			inner := image.Rect(1, 1, maxInt(1, size.X-1), maxInt(1, size.Y-1))
+			if bg.A != 0 {
+				paint.FillShape(gtx.Ops, bg, clip.RRect{Rect: inner, NE: 5, NW: 5, SE: 5, SW: 5}.Op(gtx.Ops))
+			}
+			labelGtx := gtx
+			labelGtx.Constraints = layout.Exact(size)
+			layout.Center.Layout(labelGtx, func(gtx layout.Context) layout.Dimensions {
+				return u.labelColor(gtx, label, unit.Sp(12), fg, 1, font.Normal)
+			})
+			return layout.Dimensions{Size: size}
+		})
+	}
 	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Stack{}.Layout(gtx,
 			layout.Expanded(func(gtx layout.Context) layout.Dimensions {
@@ -1001,11 +1017,6 @@ func (u *appUI) button(gtx layout.Context, click *widget.Clickable, label string
 			}),
 			layout.Stacked(func(gtx layout.Context) layout.Dimensions {
 				return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					if style.centered {
-						return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return u.labelColor(gtx, label, unit.Sp(12), fg, 1, font.Normal)
-						})
-					}
 					return u.labelColor(gtx, label, unit.Sp(12), fg, 1, font.Normal)
 				})
 			}),

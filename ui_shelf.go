@@ -48,10 +48,12 @@ type sectionState struct {
 	searchPending bool
 	cardRevisions map[int]int
 	filterClick   widget.Clickable
+	filterWidth   int
 	sortClick     widget.Clickable
 	sortWidth     int
 	menuKind      string
 	menuAnchor    image.Point
+	menuCenter    int
 	menuClose     widget.Clickable
 	menuClicks    []widget.Clickable
 	tagClicks     []widget.Clickable
@@ -180,9 +182,11 @@ func (u *appUI) layoutSection(gtx layout.Context, s *sectionState, viewportH int
 		return layout.Dimensions{}
 	}
 	if s.filterClick.Clicked(gtx) {
+		s.menuCenter = u.pressedControlCenter(&s.filterClick, s.filterWidth)
 		u.toggleRuleMenu(s, "filter", u.press.position)
 	}
 	if s.sortClick.Clicked(gtx) {
+		s.menuCenter = u.pressedControlCenter(&s.sortClick, s.sortWidth)
 		u.toggleRuleMenu(s, "sort", u.press.position)
 	}
 	u.handleRuleMenu(gtx, s)
@@ -263,7 +267,9 @@ func (u *appUI) layoutSectionHeader(gtx layout.Context, s *sectionState) layout.
 					return u.editor(gtx, &s.search, "Search this section...", 35)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return u.button(gtx, &s.filterClick, filterLabel, buttonStyle{primary: s.menuKind == "filter"})
+					dims := u.button(gtx, &s.filterClick, filterLabel, buttonStyle{primary: s.menuKind == "filter"})
+					s.filterWidth = dims.Size.X
+					return dims
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					dims := u.button(gtx, &s.sortClick, sortLabel, buttonStyle{primary: s.menuKind == "sort"})
@@ -771,14 +777,21 @@ func (u *appUI) layoutRuleOverlay(gtx layout.Context) {
 	menuDims := u.layoutRuleMenuPanel(gtx, s, options, menuWidth)
 	menu := macro.Stop()
 	right := gtx.Constraints.Max.X - gtx.Dp(unit.Dp(18))
+	triggerWidth := s.sortWidth
 	if s.menuKind == "filter" {
 		right = gtx.Constraints.Max.X - gtx.Dp(unit.Dp(18)) - s.sortWidth - gtx.Dp(unit.Dp(12))
+		triggerWidth = s.filterWidth
 	}
 	top := s.menuAnchor.Y + gtx.Dp(unit.Dp(18))
 	if !s.menuAnchorValid(gtx) {
 		top = gtx.Dp(unit.Dp(52 + 14 + 35))
 	}
-	x := maxInt(gtx.Dp(unit.Dp(8)), right-menuDims.Size.X)
+	x := s.menuCenter - menuDims.Size.X/2
+	if s.menuCenter == 0 {
+		x = right - triggerWidth/2 - menuDims.Size.X/2
+	}
+	x = minInt(x, gtx.Constraints.Max.X-gtx.Dp(unit.Dp(8))-menuDims.Size.X)
+	x = maxInt(gtx.Dp(unit.Dp(8)), x)
 	y := maxInt(gtx.Dp(unit.Dp(52)), top)
 	if y+menuDims.Size.Y > gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8)) {
 		y = maxInt(gtx.Dp(unit.Dp(52)), gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8))-menuDims.Size.Y)
@@ -788,6 +801,17 @@ func (u *appUI) layoutRuleOverlay(gtx layout.Context) {
 	})
 	defer op.Offset(image.Pt(x, y)).Push(gtx.Ops).Pop()
 	menu.Add(gtx.Ops)
+}
+
+func (u *appUI) pressedControlCenter(click *widget.Clickable, width int) int {
+	history := click.History()
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Cancelled {
+			continue
+		}
+		return u.press.position.X - history[i].Position.X + width/2
+	}
+	return 0
 }
 
 func (u *appUI) ruleMenuWidth(gtx layout.Context, options []model.RuleInfo) int {
