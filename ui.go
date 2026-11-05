@@ -306,6 +306,8 @@ func (u *appUI) run() error {
 		}
 		switch ev := ev.(type) {
 		case app.FrameEvent:
+			u.chrome.metric = ev.Metric
+			u.recoverMinimizedWindow()
 			for {
 				select {
 				case queued := <-u.events:
@@ -328,8 +330,17 @@ func (u *appUI) run() error {
 }
 
 func (u *appUI) applyWindowConfig(config app.Config) {
+	if config.Mode == app.Minimized {
+		if u.chrome.mode != app.Minimized {
+			u.chrome.restoreMode = u.chrome.mode
+		}
+	} else if config.Mode == app.Windowed && !u.chrome.restorePending && config.Size.X > 0 && config.Size.Y > 0 {
+		u.chrome.windowedSize = config.Size
+	}
+	u.chrome.mode = config.Mode
 	u.chrome.maximized = config.Mode == app.Maximized
 	u.chrome.focused = config.Focused
+	u.finishMinimizedRestore()
 }
 
 func (u *appUI) post(ev any) {
@@ -543,9 +554,7 @@ func (u *appUI) handleUIEvent(ev any) {
 		}
 		u.handleDialogPath(ev.kind, ev.path)
 	case chromeActionEvent:
-		if u.win != nil {
-			u.win.Perform(chromeAction(ev.part, u.chrome.maximized))
-		}
+		u.performWindowAction(chromeAction(ev.part, u.chrome.maximized))
 	case chromeHoverEvent:
 		u.chrome.hover = ev.part
 	}

@@ -429,6 +429,45 @@ func TestWindowConfigUpdatesChromeState(t *testing.T) {
 	}
 }
 
+func TestMinimizedWindowPreservesRestoreMode(t *testing.T) {
+	var u appUI
+	windowedSize := image.Pt(960, 688)
+	u.applyWindowConfig(app.Config{Mode: app.Windowed, Size: windowedSize, Focused: true})
+	u.applyWindowConfig(app.Config{Mode: app.Maximized, Size: image.Pt(2048, 1104), Focused: true})
+	u.applyWindowConfig(app.Config{Mode: app.Minimized, Focused: false})
+	if u.chrome.mode != app.Minimized {
+		t.Fatalf("minimized mode = %v; want %v", u.chrome.mode, app.Minimized)
+	}
+	if u.chrome.restoreMode != app.Maximized {
+		t.Fatalf("restore mode = %v; want %v", u.chrome.restoreMode, app.Maximized)
+	}
+	if u.chrome.windowedSize != windowedSize {
+		t.Fatalf("windowed size = %v; want %v", u.chrome.windowedSize, windowedSize)
+	}
+
+	u.recoverMinimizedWindow()
+	if runtime.GOOS != "linux" {
+		if u.chrome.mode != app.Minimized || u.chrome.restorePending {
+			t.Fatalf("non-Linux recovery changed chrome: %+v", u.chrome)
+		}
+		return
+	}
+	if u.chrome.mode != app.Windowed || !u.chrome.restorePending {
+		t.Fatalf("recovered chrome = %+v; want pending maximized restore", u.chrome)
+	}
+	u.applyWindowConfig(app.Config{Mode: app.Windowed, Size: image.Pt(2048, 1104), Focused: true})
+	if u.chrome.restorePending {
+		t.Fatalf("maximize restore remained pending after windowed config: %+v", u.chrome)
+	}
+	if u.chrome.windowedSize != windowedSize {
+		t.Fatalf("restore sync overwrote windowed size with %v; want %v", u.chrome.windowedSize, windowedSize)
+	}
+	u.applyWindowConfig(app.Config{Mode: app.Maximized, Focused: true})
+	if !u.chrome.maximized || u.chrome.mode != app.Maximized {
+		t.Fatalf("maximized restore did not complete: %+v", u.chrome)
+	}
+}
+
 func TestSamePathUsesPlatformIdentity(t *testing.T) {
 	root := t.TempDir()
 	if !samePath(root, filepath.Join(root, ".")) {

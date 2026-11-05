@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"runtime"
 
+	"gioui.org/app"
 	"gioui.org/f32"
 	"gioui.org/io/system"
 	"gioui.org/layout"
@@ -39,12 +40,17 @@ type chromeHitRegions struct {
 }
 
 type windowChromeState struct {
-	decorations widget.Decorations
-	maximized   bool
-	focused     bool
-	hover       chromePart
-	regions     chromeHitRegions
-	lastAction  system.Action
+	decorations    widget.Decorations
+	mode           app.WindowMode
+	restoreMode    app.WindowMode
+	restorePending bool
+	metric         unit.Metric
+	windowedSize   image.Point
+	maximized      bool
+	focused        bool
+	hover          chromePart
+	regions        chromeHitRegions
+	lastAction     system.Action
 }
 
 type windowChromeBackend interface {
@@ -117,6 +123,69 @@ func chromeAction(part chromePart, maximized bool) system.Action {
 	}
 }
 
+func (u *appUI) performWindowAction(actions system.Action) {
+	unmaximize := actions&system.ActionUnmaximize != 0
+	switch {
+	case actions&system.ActionMinimize != 0:
+		if u.chrome.mode != app.Minimized {
+			u.chrome.restoreMode = u.chrome.mode
+		}
+		u.chrome.mode = app.Minimized
+	case actions&system.ActionMaximize != 0:
+		u.chrome.mode = app.Maximized
+		u.chrome.maximized = true
+	case actions&system.ActionUnmaximize != 0:
+		u.chrome.mode = app.Windowed
+		u.chrome.maximized = false
+	case actions&system.ActionFullscreen != 0:
+		u.chrome.mode = app.Fullscreen
+		u.chrome.maximized = false
+	}
+	if u.win != nil {
+		u.win.Perform(actions)
+		if runtime.GOOS == "linux" && unmaximize {
+			u.restoreWindowedSize()
+		}
+	}
+}
+
+func (u *appUI) restoreWindowedSize() {
+	size := u.chrome.windowedSize
+	if u.win == nil || size.X <= 0 || size.Y <= 0 {
+		return
+	}
+	u.win.Option(app.Size(
+		u.chrome.metric.PxToDp(size.X),
+		u.chrome.metric.PxToDp(size.Y),
+	))
+}
+
+// recoverMinimizedWindow repairs Gio's stale Linux window mode. Wayland and
+// X11 compositors restore a minimized window without changing app.Config.Mode,
+// leaving it at Minimized. Gio then refuses title-bar moves and ignores further
+// minimize/maximize transitions.
+func (u *appUI) recoverMinimizedWindow() {
+	if runtime.GOOS != "linux" || u.chrome.mode != app.Minimized {
+		return
+	}
+	u.chrome.restorePending = u.chrome.restoreMode == app.Maximized
+	u.chrome.mode = app.Windowed
+	u.chrome.maximized = false
+	if u.win != nil {
+		u.win.Option(app.Windowed.Option())
+	}
+}
+
+func (u *appUI) finishMinimizedRestore() {
+	if !u.chrome.restorePending || u.chrome.mode != app.Windowed {
+		return
+	}
+	u.chrome.restorePending = false
+	if u.win != nil {
+		u.win.Option(app.Maximized.Option())
+	}
+}
+
 func captionContentInsets(height int) layout.Inset {
 	if runtime.GOOS == "darwin" {
 		return layout.Inset{Left: unit.Dp(macCaptionAreaDp), Right: unit.Dp(8)}
@@ -141,9 +210,7 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 	u.chrome.decorations.Maximized = u.chrome.maximized
 	if actions := u.chrome.decorations.Update(gtx); actions != 0 {
 		u.chrome.lastAction = actions
-		if u.win != nil {
-			u.win.Perform(actions)
-		}
+		u.performWindowAction(actions)
 	}
 
 	if runtime.GOOS == "darwin" {
