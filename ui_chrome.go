@@ -290,23 +290,23 @@ func captionRestoreGeometry(cx, cy, half int) restoreGlyphGeometry {
 	return restoreGlyphGeometry{
 		Square:        square,
 		Radius:        maxInt(1, half/4),
-		BracketStart:  image.Pt(cx-half/2, cy-half),
-		BracketCorner: image.Pt(cx+half, cy-half),
-		BracketEnd:    image.Pt(cx+half, cy+half/2),
+		BracketStart:  image.Pt(cx-half/2, cy-half-1),
+		BracketCorner: image.Pt(cx+half+1, cy-half-1),
+		BracketEnd:    image.Pt(cx+half+1, cy+half/2),
 	}
 }
 
 func captionRestoreGapRects(geometry restoreGlyphGeometry) (image.Rectangle, image.Rectangle) {
 	horizontal := image.Rect(
 		geometry.BracketStart.X,
-		geometry.BracketStart.Y+1,
+		geometry.Square.Min.Y-1,
 		geometry.BracketCorner.X,
 		geometry.Square.Min.Y,
 	)
 	vertical := image.Rect(
 		geometry.Square.Max.X+1,
 		geometry.Square.Min.Y,
-		geometry.BracketCorner.X,
+		geometry.Square.Max.X+2,
 		geometry.BracketEnd.Y,
 	)
 	return horizontal, vertical
