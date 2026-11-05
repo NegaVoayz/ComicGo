@@ -329,7 +329,7 @@ func (u *appUI) layoutReader(gtx layout.Context) layout.Dimensions {
 			u.reader.pageEditor.SetText(strconv.Itoa(u.reader.page + 1))
 		}
 	}
-	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+	dims := layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			return u.layoutReaderStage(gtx)
 		}),
@@ -337,6 +337,8 @@ func (u *appUI) layoutReader(gtx layout.Context) layout.Dimensions {
 			return u.layoutReaderControls(gtx)
 		}),
 	)
+	u.handleReaderKeyEvents(gtx)
+	return dims
 }
 
 func (u *appUI) moveReaderSide(side int) {
@@ -577,4 +579,27 @@ func (u *appUI) handleReaderKey(ev key.Event) bool {
 		return true
 	}
 	return false
+}
+
+func (u *appUI) handleReaderKeyEvents(gtx layout.Context) {
+	for {
+		ev, ok := gtx.Event(
+			key.Filter{Name: key.NameLeftArrow},
+			key.Filter{Name: key.NameRightArrow},
+			key.Filter{Name: key.NameUpArrow},
+			key.Filter{Name: key.NameDownArrow},
+			key.Filter{Name: key.NamePageUp},
+			key.Filter{Name: key.NamePageDown},
+			key.Filter{Name: key.NameSpace},
+			key.Filter{Name: key.NameHome},
+			key.Filter{Name: key.NameEnd},
+			key.Filter{Name: key.NameEscape},
+		)
+		if !ok {
+			return
+		}
+		if ke, ok := ev.(key.Event); ok {
+			u.handleKey(ke)
+		}
+	}
 }

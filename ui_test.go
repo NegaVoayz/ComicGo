@@ -229,9 +229,9 @@ func TestReaderAcceptsOnlyVisibleSpreadSlots(t *testing.T) {
 	}
 }
 
-func TestFrameKeyEventsReachGlobalHandler(t *testing.T) {
+func TestReaderKeyEventsReachReaderHandler(t *testing.T) {
 	var u appUI
-	u.screen = screenDetail
+	u.screen = screenReader
 	router := new(input.Router)
 	ops := new(op.Ops)
 
@@ -241,7 +241,7 @@ func TestFrameKeyEventsReachGlobalHandler(t *testing.T) {
 			Source:      router.Source(),
 			Constraints: layout.Exact(image.Pt(100, 100)),
 		}
-		u.handleKeyEvents(gtx)
+		u.handleReaderKeyEvents(gtx)
 		router.Frame(ops)
 		ops.Reset()
 	}
@@ -250,8 +250,8 @@ func TestFrameKeyEventsReachGlobalHandler(t *testing.T) {
 	router.Queue(key.Event{Name: key.NameEscape, State: key.Press})
 	frame()
 
-	if u.screen != screenShelf {
-		t.Fatalf("screen = %v after Escape, want shelf", u.screen)
+	if u.screen != screenDetail {
+		t.Fatalf("screen = %v after Escape, want detail", u.screen)
 	}
 }
 
