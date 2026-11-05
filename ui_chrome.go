@@ -18,6 +18,7 @@ import (
 const (
 	captionButtonWidthDp  = 56
 	captionButtonHeightDp = 40
+	captionButtonTopDp    = 2
 	macCaptionAreaDp      = 74
 )
 
@@ -78,7 +79,7 @@ func captionHitRegions(width, height, scale int) chromeHitRegions {
 	right := width
 	button := captionButtonWidthDp * scale
 	buttonHeight := captionButtonHeightDp * scale
-	top := 0
+	top := captionButtonTopDp * scale
 	bottom := minInt(height, buttonHeight)
 	maximize := image.Rect(right-2*button, top, right-button, bottom)
 	close := image.Rect(right-button, top, right, bottom)
@@ -154,7 +155,7 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 	} else {
 		buttonWidth := captionButtonWidthDp * scale
 		buttonHeight := captionButtonHeightDp * scale
-		buttonTop := 0
+		buttonTop := captionButtonTopDp * scale
 		buttonHeight = minInt(height, buttonHeight)
 		start := size.X - 3*buttonWidth
 		u.layoutWindowsCaptionButton(gtx, chromeMinimize, system.ActionMinimize, start, buttonTop, buttonWidth, buttonHeight)

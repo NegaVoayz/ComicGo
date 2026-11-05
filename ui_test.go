@@ -299,8 +299,8 @@ func TestCaptionControlHitRegions(t *testing.T) {
 			if rect.Dy() >= rect.Dx() {
 				t.Fatalf("%s control is %v; want landscape proportions", tc.name, rect.Size())
 			}
-			if rect.Min.Y != 0 {
-				t.Fatalf("%s control starts at y=%d; want flush with the top", tc.name, rect.Min.Y)
+			if rect.Min.Y != captionButtonTopDp {
+				t.Fatalf("%s control starts at y=%d; want %d", tc.name, rect.Min.Y, captionButtonTopDp)
 			}
 			center := rect.Min.Add(image.Pt(rect.Dx()/2, rect.Dy()/2))
 			if got := regions.at(center); got != tc.part {
