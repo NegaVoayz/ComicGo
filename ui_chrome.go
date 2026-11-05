@@ -233,6 +233,21 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 	cx := size.X / 2
 	cy := size.Y / 2
 	glyph := maxInt(6, size.Y/7)
+	if part == chromeMaximize && maximized {
+		geometry := captionRestoreGeometry(cx, cy, glyph)
+		var bracket clip.Path
+		bracket.Begin(ops)
+		bracket.MoveTo(f32.Pt(float32(geometry.BracketStart.X), float32(geometry.BracketStart.Y)))
+		bracket.LineTo(f32.Pt(float32(geometry.BracketCorner.X), float32(geometry.BracketCorner.Y)))
+		bracket.LineTo(f32.Pt(float32(geometry.BracketEnd.X), float32(geometry.BracketEnd.Y)))
+		paint.FillShape(ops, col, clip.Stroke{Path: bracket.End(), Width: 1}.Op())
+
+		var square clip.Path
+		square.Begin(ops)
+		addRoundedRectPath(&square, geometry.Square, geometry.Radius)
+		paint.FillShape(ops, col, clip.Stroke{Path: square.End(), Width: 1}.Op())
+		return
+	}
 	var path clip.Path
 	path.Begin(ops)
 	switch part {
@@ -240,15 +255,7 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 		path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy)))
 		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy)))
 	case chromeMaximize:
-		if maximized {
-			geometry := captionRestoreGeometry(cx, cy, glyph)
-			path.MoveTo(f32.Pt(float32(geometry.BracketStart.X), float32(geometry.BracketStart.Y)))
-			path.LineTo(f32.Pt(float32(geometry.BracketCorner.X), float32(geometry.BracketCorner.Y)))
-			path.LineTo(f32.Pt(float32(geometry.BracketEnd.X), float32(geometry.BracketEnd.Y)))
-			addRoundedRectPath(&path, geometry.Square, geometry.Radius)
-		} else {
-			addRectPath(&path, image.Rect(cx-glyph, cy-glyph, cx+glyph, cy+glyph))
-		}
+		addRectPath(&path, image.Rect(cx-glyph, cy-glyph, cx+glyph, cy+glyph))
 	case chromeClose:
 		path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy-glyph)))
 		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy+glyph)))

@@ -355,6 +355,12 @@ func TestRestoreGlyphMatchesWindowsGeometry(t *testing.T) {
 	if geometry.BracketStart.Y != geometry.BracketCorner.Y || geometry.BracketEnd.X != geometry.BracketCorner.X {
 		t.Fatalf("restore bracket is not a right angle: %+v", geometry)
 	}
+	if gap := geometry.Square.Min.Y - geometry.BracketStart.Y; gap < 2 {
+		t.Fatalf("restore top gap = %d; want at least 2 for a visible 1px gap", gap)
+	}
+	if gap := geometry.BracketCorner.X - geometry.Square.Max.X; gap < 2 {
+		t.Fatalf("restore right gap = %d; want at least 2 for a visible 1px gap", gap)
+	}
 }
 
 func TestWindowConfigUpdatesChromeState(t *testing.T) {
