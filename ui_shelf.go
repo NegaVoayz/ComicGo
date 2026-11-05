@@ -17,8 +17,10 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
+	"gioui.org/widget/material"
 	"gioui.org/x/outlay"
 )
 
@@ -241,13 +243,17 @@ func (u *appUI) layoutSectionHeader(gtx layout.Context, s *sectionState) layout.
 							width := gtx.Dp(unit.Dp(countWidth))
 							gtx.Constraints.Min.X = width
 							gtx.Constraints.Max.X = width
-							text := strconv.Itoa(s.total)
+							value := strconv.Itoa(s.total)
 							color := colDim
 							if s.searchPending {
-								text = "..."
+								value = "..."
 								color = colAccent
 							}
-							dims := u.label(gtx, text, unit.Sp(12), color, 1)
+							label := material.Label(u.theme, unit.Sp(12), value)
+							label.Alignment = text.End
+							label.Color = color
+							label.MaxLines = 1
+							dims := label.Layout(gtx)
 							dims.Size.X = width
 							return dims
 						}),
