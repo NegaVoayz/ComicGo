@@ -354,6 +354,9 @@ func TestRestoreGlyphUsesTwoClosedOverlappingRects(t *testing.T) {
 	if back == front {
 		t.Fatal("restore glyph rectangles must be offset")
 	}
+	if back.Intersect(front).Dx() >= back.Dx() || back.Intersect(front).Dy() >= back.Dy() {
+		t.Fatal("restore glyph rectangles overlap too much to read as two outlines")
+	}
 }
 
 func TestWindowConfigUpdatesChromeState(t *testing.T) {
