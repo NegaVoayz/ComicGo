@@ -233,12 +233,6 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 	cx := size.X / 2
 	cy := size.Y / 2
 	glyph := maxInt(6, size.Y/7)
-	if part == chromeMaximize && maximized {
-		back, front := captionRestoreRects(cx, cy, glyph)
-		drawGlyphRect(ops, col, back)
-		drawGlyphRect(ops, col, front)
-		return
-	}
 	var path clip.Path
 	path.Begin(ops)
 	switch part {
@@ -246,7 +240,13 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 		path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy)))
 		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy)))
 	case chromeMaximize:
-		addRectPath(&path, image.Rect(cx-glyph, cy-glyph, cx+glyph, cy+glyph))
+		if maximized {
+			back, front := captionRestoreRects(cx, cy, glyph)
+			addRectPath(&path, back)
+			addRectPath(&path, front)
+		} else {
+			addRectPath(&path, image.Rect(cx-glyph, cy-glyph, cx+glyph, cy+glyph))
+		}
 	case chromeClose:
 		path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy-glyph)))
 		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy+glyph)))
@@ -257,24 +257,10 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 }
 
 func captionRestoreRects(cx, cy, half int) (image.Rectangle, image.Rectangle) {
-	boxSize := maxInt(8, half+2)
-	offset := maxInt(3, (half+1)/3)
-	back := image.Rect(
-		cx-boxSize/2+offset, cy-boxSize/2-offset,
-		cx-boxSize/2+offset+boxSize, cy-boxSize/2-offset+boxSize,
-	)
-	front := image.Rect(
-		cx-boxSize/2-offset, cy-boxSize/2+offset,
-		cx-boxSize/2-offset+boxSize, cy-boxSize/2+offset+boxSize,
-	)
+	inset := maxInt(2, half-2)
+	back := image.Rect(cx-inset, cy-half, cx+half, cy+inset)
+	front := image.Rect(cx-half, cy-inset, cx+inset, cy+half)
 	return back, front
-}
-
-func drawGlyphRect(ops *op.Ops, col color.NRGBA, rect image.Rectangle) {
-	var path clip.Path
-	path.Begin(ops)
-	addRectPath(&path, rect)
-	paint.FillShape(ops, col, clip.Stroke{Path: path.End(), Width: 1}.Op())
 }
 
 func addRectPath(path *clip.Path, rect image.Rectangle) {
