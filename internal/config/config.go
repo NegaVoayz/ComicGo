@@ -15,10 +15,6 @@ import (
 // AppName is used to scope the per-user directory.
 const AppName = "comicgo"
 
-// DefaultMediaTransport is used unless overridden. "http" serves covers/pages
-// from the loopback media server; "blob" uses data: URLs (fallback).
-const DefaultMediaTransport = "http"
-
 // SchemaVersion is stamped into settings and compared at startup.
 const SchemaVersion = 1
 
@@ -95,8 +91,7 @@ func LoadSettings() (model.Settings, error) {
 // DefaultSettings returns the baseline settings.
 func DefaultSettings() model.Settings {
 	return model.Settings{
-		MediaTransport: DefaultMediaTransport,
-		SchemaVersion:  SchemaVersion,
+		SchemaVersion: SchemaVersion,
 	}
 }
 

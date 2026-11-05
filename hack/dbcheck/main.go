@@ -16,7 +16,7 @@ func main() {
 		fmt.Println("settings error:", err)
 	} else {
 		fmt.Println("roots:", s.LibraryRoots)
-		fmt.Println("transport:", s.MediaTransport)
+		fmt.Println("legacy transport:", s.MediaTransport)
 	}
 	paths, err := config.Resolve()
 	if err != nil {

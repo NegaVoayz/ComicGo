@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -27,15 +27,8 @@ import (
 	"comicgo/internal/model"
 	"comicgo/internal/plugins"
 	"comicgo/internal/scan"
-	"comicgo/internal/serve"
 	"comicgo/internal/watch"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-// errImportCancelled is returned internally when the user cancels one of the
-// import destination dialogs; callers translate it into a silent empty result.
-var errImportCancelled = errors.New("import cancelled")
 
 // Version is the human-facing app version.
 const Version = "0.1.0"
@@ -62,15 +55,26 @@ func ensureThumbGeneration(dir string) {
 	_ = os.WriteFile(marker, []byte(thumbGen), 0o644)
 }
 
-// App is the single object bound to the frontend.
+// AppEventSink receives backend state changes that the GUI should render.
+// Implementations must not block; background import/scan workers call these
+// methods directly.
+type AppEventSink interface {
+	ScanStarted()
+	ScanProgress(model.ScanProgress)
+	ScanDone(error)
+	ScanError(path string, err error)
+	ImportProgress(model.ImportProgress)
+	LayoutChanged()
+}
+
+// App owns the library, database, watcher, scans, and imports.
 type App struct {
-	ctx      context.Context
 	mu       sync.Mutex
 	importMu sync.Mutex // serializes comic imports / metadata edits (one file rewrite at a time)
+	events   AppEventSink
 	paths    *config.Paths
 	store    *index.Store
 	thumbs   *cache.ThumbStore
-	media    *serve.Server
 
 	settings model.Settings
 	layout   model.LayoutDoc
@@ -79,7 +83,7 @@ type App struct {
 	metasDirty bool
 
 	scanCancel context.CancelFunc
-	scanDone   chan struct{}
+	scanDoneCh chan struct{}
 	watcher    *watch.Watcher
 
 	pageCache *cache.LRU
@@ -91,15 +95,45 @@ type App struct {
 	coverGen atomic.Uint32
 }
 
-// mediaProvider adapts App to serve.Provider without exposing provider methods
-// as Wails bindings.
-type mediaProvider struct{ a *App }
-
-func (m mediaProvider) Cover(id int64) ([]byte, string, error) {
-	return m.a.coverBytes(id)
+// SetEventSink installs the GUI listener. It must be called before Start.
+func (a *App) SetEventSink(sink AppEventSink) {
+	a.events = sink
 }
-func (m mediaProvider) Page(id int64, n int) ([]byte, string, error) {
-	return m.a.pageBytes(id, n)
+
+func (a *App) scanStarted() {
+	if a.events != nil {
+		a.events.ScanStarted()
+	}
+}
+
+func (a *App) scanProgress(p model.ScanProgress) {
+	if a.events != nil {
+		a.events.ScanProgress(p)
+	}
+}
+
+func (a *App) emitScanDone(err error) {
+	if a.events != nil {
+		a.events.ScanDone(err)
+	}
+}
+
+func (a *App) scanError(path string, err error) {
+	if a.events != nil {
+		a.events.ScanError(path, err)
+	}
+}
+
+func (a *App) importProgress(p model.ImportProgress) {
+	if a.events != nil {
+		a.events.ImportProgress(p)
+	}
+}
+
+func (a *App) layoutChanged() {
+	if a.events != nil {
+		a.events.LayoutChanged()
+	}
 }
 
 // coverWorkers returns how many cover thumbnails may be decoded in parallel:
@@ -133,47 +167,35 @@ func (a *App) dbg(format string, args ...any) {
 	}
 }
 
-// startup is called once when the app boots.
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+// Start initializes user configuration and starts watching configured roots.
+func (a *App) Start() error {
 	paths, err := config.Resolve()
 	if err != nil {
-		runtime.LogErrorf(ctx, "resolve config: %v", err)
-		return
+		return fmt.Errorf("resolve config: %w", err)
 	}
 	a.paths = paths
 
 	s, err := config.LoadSettings()
 	if err != nil {
-		runtime.LogErrorf(ctx, "load settings: %v", err)
+		return fmt.Errorf("load settings: %w", err)
 	}
 	a.settings = s
 
 	st, err := index.Open(paths.DB)
 	if err != nil {
-		runtime.LogErrorf(ctx, "open database: %v", err)
-		return
+		return fmt.Errorf("open database: %w", err)
 	}
 	a.store = st
 	a.thumbs = cache.NewThumbStore(paths.Thumbs)
 	ensureThumbGeneration(paths.Thumbs)
 
-	// loopback media server (unless the user chose blob transport)
-	if s.MediaTransport != "blob" {
-		ms, err := serve.Start(mediaProvider{a})
-		if err != nil {
-			runtime.LogErrorf(ctx, "start media server: %v", err)
-		} else {
-			a.media = ms
-		}
-	}
-
 	doc, err := config.LoadLayout()
 	if err != nil {
-		runtime.LogErrorf(ctx, "load layout: %v", err)
+		return fmt.Errorf("load layout: %w", err)
 	}
 	a.layout = doc
 	a.syncWatcher()
+	return nil
 }
 
 // syncWatcher restarts the folder watcher for the current library roots.
@@ -195,16 +217,17 @@ func (a *App) syncWatcher() {
 	a.dbg("watcher started on %d root(s)", len(roots))
 }
 
-// shutdown closes resources when the app exits.
-func (a *App) shutdown(ctx context.Context) {
+// Close releases resources when the app exits.
+func (a *App) Close() {
 	if a.watcher != nil {
 		a.watcher.Stop()
-	}
-	if a.media != nil {
-		a.media.Close()
+		a.watcher = nil
 	}
 	if a.store != nil {
-		a.store.Close()
+		if err := a.store.Close(); err != nil {
+			log.Printf("close database: %v", err)
+		}
+		a.store = nil
 	}
 }
 
@@ -236,23 +259,6 @@ func (a *App) AddLibrary(dir string) error {
 	return nil
 }
 
-// PickLibrary opens a directory dialog and adds the chosen folder.
-func (a *App) PickLibrary() (model.Settings, error) {
-	if a.ctx == nil {
-		return a.settings, fmt.Errorf("app not ready")
-	}
-	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Choose your comics folder",
-	})
-	if err != nil {
-		return a.settings, err
-	}
-	if dir == "" {
-		return a.settings, nil // cancelled
-	}
-	return a.settings, a.AddLibrary(dir)
-}
-
 // RemoveLibrary removes a root without deleting files. Indexed comics under
 // that folder are purged so they stop appearing on the shelf. It also stops
 // any scan currently adding rows from that folder (otherwise commits that land
@@ -281,95 +287,35 @@ func (a *App) RemoveLibrary(dir string) error {
 
 // ---- comic import ----
 
-// ImportArchive opens a file dialog for a supported comic archive, converts it
-// to a .zip inside a library root and rescans so it appears on the shelf. A
-// cancelled dialog returns an empty outcome with no error.
-func (a *App) ImportArchive() (model.ImportOutcome, error) {
-	if a.ctx == nil {
-		return model.ImportOutcome{}, errors.New("app not ready")
-	}
-	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Import a comic archive",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Comics", Pattern: "*.zip;*.cbz;*.rar;*.cbr;*.7z;*.cb7;*.tar;*.tar.gz;*.tgz"},
-			{DisplayName: "All files", Pattern: "*.*"},
-		},
-	})
-	if err != nil {
-		return model.ImportOutcome{}, err
-	}
-	if file == "" {
-		return model.ImportOutcome{}, nil // cancelled
-	}
-	outs, err := a.runImports([]string{file})
-	if err != nil {
-		return model.ImportOutcome{}, err
-	}
-	if len(outs) == 0 {
-		return model.ImportOutcome{}, nil // destination picker cancelled
-	}
-	return outs[0], nil
-}
-
-// ImportFolder opens a directory dialog for a folder of pictures, converts it
-// to a .zip inside a library root and rescans so it appears on the shelf. A
-// cancelled dialog returns an empty outcome with no error.
-func (a *App) ImportFolder() (model.ImportOutcome, error) {
-	if a.ctx == nil {
-		return model.ImportOutcome{}, errors.New("app not ready")
-	}
-	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Import a folder of pictures",
-	})
-	if err != nil {
-		return model.ImportOutcome{}, err
-	}
-	if dir == "" {
-		return model.ImportOutcome{}, nil // cancelled
-	}
-	outs, err := a.runImports([]string{dir})
-	if err != nil {
-		return model.ImportOutcome{}, err
-	}
-	if len(outs) == 0 {
-		return model.ImportOutcome{}, nil // destination picker cancelled
-	}
-	return outs[0], nil
-}
-
-// ImportDropped converts every file/folder dropped onto the window that is a
-// supported source. Non-importable dropped files are skipped silently so loose
-// dropped files do not spam errors; a drop containing only such files yields an
-// explanatory error. Any destination picker needed appears once for the batch.
-func (a *App) ImportDropped(paths []string) ([]model.ImportOutcome, error) {
-	return a.runImports(paths)
-}
-
-// runImports converts every source path (a supported archive file or an image
-// folder) into its own .zip under one destination directory, then triggers a
-// scan. Returns the outcomes of the imports that succeeded; a non-nil error
-// reports items that failed (or that nothing was importable).
-func (a *App) runImports(sources []string) ([]model.ImportOutcome, error) {
+// ImportSources converts every supported archive or image folder into a .zip
+// under destination, then starts an index scan. The GUI owns source and
+// destination dialogs; this method only validates and performs the work.
+func (a *App) ImportSources(sources []string, destination string) ([]model.ImportOutcome, error) {
 	if len(sources) == 0 {
 		return nil, nil
+	}
+	if len(a.settings.LibraryRoots) == 0 {
+		return nil, fmt.Errorf("add a library folder before importing comics")
+	}
+	validDest := false
+	for _, root := range a.settings.LibraryRoots {
+		if index.IsWithin(root, destination) {
+			validDest = true
+			break
+		}
+	}
+	if !validDest {
+		return nil, fmt.Errorf("import folder is not inside a library folder: %s", destination)
 	}
 	if !a.importMu.TryLock() {
 		return nil, errors.New("an import is already running")
 	}
 	defer a.importMu.Unlock()
 
-	dir, err := a.resolveImportDir()
-	if err != nil {
-		if errors.Is(err, errImportCancelled) {
-			return nil, nil // user cancelled the destination picker: stay quiet
-		}
-		return nil, err
-	}
-
 	var imported []model.ImportOutcome
 	var failures []string
 	for _, src := range sources {
-		out, err := a.importOne(src, dir)
+		out, err := a.importOne(src, destination)
 		if err != nil {
 			failures = append(failures, err.Error())
 			continue
@@ -425,7 +371,7 @@ func (a *App) importOne(source, destDir string) (*model.ImportOutcome, error) {
 		Dest:    dest,
 		Comment: comment,
 		OnProgress: func(done, total int) {
-			runtime.EventsEmit(a.ctx, "import:progress", model.ImportProgress{
+			a.importProgress(model.ImportProgress{
 				Done: done, Total: total, Name: filepath.Base(dest),
 			})
 		},
@@ -448,39 +394,6 @@ func isImportableExt(path string) bool {
 		return true
 	}
 	return false
-}
-
-// resolveImportDir applies the import destination rule: with a single library
-// root the converted .zip goes straight into it; with several roots the user
-// picks a subfolder (defaulting to the first root) and only a folder inside a
-// configured root is accepted. A cancelled picker returns errImportCancelled.
-func (a *App) resolveImportDir() (string, error) {
-	roots := a.settings.LibraryRoots
-	if len(roots) == 0 {
-		return "", errors.New("add a library folder before importing comics")
-	}
-	if len(roots) == 1 {
-		return roots[0], nil
-	}
-	if a.ctx == nil {
-		return "", errors.New("app not ready")
-	}
-	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Where should the imported comic go?",
-		DefaultDirectory: roots[0],
-	})
-	if err != nil {
-		return "", err
-	}
-	if dir == "" {
-		return "", errImportCancelled
-	}
-	for _, r := range roots {
-		if index.IsWithin(r, dir) {
-			return dir, nil
-		}
-	}
-	return "", fmt.Errorf("the chosen folder is not inside a library folder: %s", dir)
 }
 
 // pruneStaleRoots deletes any indexed comic that is not under a current
@@ -539,7 +452,7 @@ func (a *App) purgeRoot(dir string) {
 
 // GetAbout returns info for the About dialog.
 func (a *App) GetAbout() model.About {
-	ab := model.About{Version: Version, MediaTransport: a.settings.MediaTransport}
+	ab := model.About{Version: Version}
 	if a.paths != nil {
 		ab.ConfigDir = a.paths.Root
 	}
@@ -569,7 +482,7 @@ func (a *App) CancelScan() {
 // late commits land after a removal), or until the timeout elapses.
 func (a *App) waitScanDone(timeout time.Duration) {
 	a.mu.Lock()
-	ch := a.scanDone
+	ch := a.scanDoneCh
 	a.mu.Unlock()
 	if ch == nil {
 		return
@@ -595,12 +508,12 @@ func (a *App) startScan() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.scanCancel = cancel
-	a.scanDone = done
+	a.scanDoneCh = done
 	a.mu.Unlock()
 
 	roots := append([]string(nil), a.settings.LibraryRoots...)
 	a.dbg("startScan begin roots=%v", roots)
-	runtime.EventsEmit(a.ctx, "scan:started", struct{}{})
+	a.scanStarted()
 
 	go func() {
 		defer close(done)
@@ -609,10 +522,10 @@ func (a *App) startScan() {
 			Thumbs: a.thumbs,
 			Roots:  roots,
 			OnProgress: func(p model.ScanProgress) {
-				runtime.EventsEmit(a.ctx, "scan:progress", p)
+				a.scanProgress(p)
 			},
 			OnError: func(path string, err error) {
-				runtime.EventsEmit(a.ctx, "scan:error", map[string]string{"path": path, "error": err.Error()})
+				a.scanError(path, err)
 			},
 		}
 		err := scan.Run(ctx, opts)
@@ -628,11 +541,7 @@ func (a *App) startScan() {
 		}
 		a.dbg("scan finished err=%v", err)
 
-		if err != nil {
-			runtime.EventsEmit(a.ctx, "scan:done", map[string]any{"error": err.Error()})
-		} else {
-			runtime.EventsEmit(a.ctx, "scan:done", map[string]any{"ok": true})
-		}
+		a.emitScanDone(err)
 	}()
 }
 
@@ -826,11 +735,6 @@ func cardTags(m model.Meta) []string {
 	return out
 }
 
-// ReportFrontend lets the UI log diagnostics into the debug file (debugging aid).
-func (a *App) ReportFrontend(msg string) {
-	a.dbg("FRONTEND: %s", msg)
-}
-
 // GetComics returns one paged slice of cards matching the query.
 func (a *App) GetComics(q model.PageQuery) ([]model.ComicCard, error) {
 	list := a.selection(q.Search, q.FilterRuleID)
@@ -861,21 +765,10 @@ func (a *App) GetComics(q model.PageQuery) ([]model.ComicCard, error) {
 			Tags:      cardTags(m),
 			PageCount: m.PageCount, Fav: m.Fav, LastPage: m.LastReadPage,
 			HasNonUTF8: m.HasNonUTF8,
-			CoverURL:   a.shelfCoverURL(m.ID),
 		})
 	}
 	a.dbg("GetComics(%+v) -> %d cards of %d matched", q, len(cards), len(list))
 	return cards, nil
-}
-
-// shelfCoverURL pre-fills cover URLs only in http mode. In blob/data fallback
-// mode it returns "" so the frontend lazily fetches each visible cover via
-// GetCover instead of inlining data for a whole page of cards at once.
-func (a *App) shelfCoverURL(id int64) string {
-	if a.media != nil {
-		return a.media.CoverURL(id)
-	}
-	return ""
 }
 
 // GetComicDetail returns full metadata for the info panel.
@@ -891,37 +784,6 @@ func (a *App) GetComicDetail(id int64) (model.ComicDetail, error) {
 	}
 	sort.Strings(keys)
 	return model.ComicDetail{Meta: m, CommentRaw: rows.CommentRaw, AllMetaKeys: keys}, nil
-}
-
-// GetCover returns a transport URL for a comic's cover thumbnail.
-func (a *App) GetCover(id int64) model.CoverRef {
-	return model.CoverRef{URL: a.coverURL(id)}
-}
-
-// GetPageRef returns a transport URL for one reader page.
-func (a *App) GetPageRef(id int64, n int) model.PageRef {
-	if a.media != nil {
-		return model.PageRef{URL: a.media.PageURL(id, n)}
-	}
-	b, mime, err := a.pageBytes(id, n)
-	if err != nil {
-		return model.PageRef{}
-	}
-	return model.PageRef{URL: "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)}
-}
-
-// ---- reader ----
-
-// OpenComic returns the page count for a comic (used to size the reader).
-func (a *App) OpenComic(id int64) (model.OpenResult, error) {
-	if _, err := a.store.PathFromID(id); err != nil {
-		return model.OpenResult{}, err
-	}
-	rows, err := a.store.RowByID(id)
-	if err != nil {
-		return model.OpenResult{}, err
-	}
-	return model.OpenResult{ID: id, PageCount: rows.PageCount}, nil
 }
 
 // ---- progress / favorites ----
@@ -1106,7 +968,7 @@ func (a *App) ReloadLayout() error {
 		return err
 	}
 	a.layout = doc
-	runtime.EventsEmit(a.ctx, "layout:changed", struct{}{})
+	a.layoutChanged()
 	return nil
 }
 
@@ -1116,7 +978,7 @@ func (a *App) SaveLayout(doc model.LayoutDoc) error {
 		return err
 	}
 	a.layout = doc
-	runtime.EventsEmit(a.ctx, "layout:changed", struct{}{})
+	a.layoutChanged()
 	return nil
 }
 
@@ -1169,18 +1031,7 @@ func (a *App) CardData(cardID string) map[string]any {
 	return map[string]any{}
 }
 
-// ---- media provider internals ----
-
-func (a *App) coverURL(id int64) string {
-	if a.media != nil {
-		return a.media.CoverURL(id)
-	}
-	b, _, err := a.coverBytes(id)
-	if err != nil {
-		return ""
-	}
-	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(b)
-}
+// ---- image provider internals ----
 
 func (a *App) coverBytes(id int64) ([]byte, string, error) {
 	if a.thumbs.Has(id) {

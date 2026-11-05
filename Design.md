@@ -1,4 +1,4 @@
-Dependency: Go, webview(**Wails**)
+Dependency: Go, **Gio**
 
 Background:
 

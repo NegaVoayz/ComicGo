@@ -1,5 +1,5 @@
 // Package e2e exercises the real data path the UI drives — scan → SQLite index
-// → loopback HTTP cover/page serving — against synthetic fixtures, or against
+// → direct cover/page decoding — against synthetic fixtures, or against
 // a real library folder when E2E_LIB points at one. It does not need the GUI.
 package e2e
 
@@ -11,7 +11,6 @@ import (
 	"image/color"
 	"image/png"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,6 @@ import (
 	"comicgo/internal/imgutil"
 	"comicgo/internal/index"
 	"comicgo/internal/scan"
-	"comicgo/internal/serve"
 )
 
 // ---------------------------------------------------------------------------
@@ -196,12 +194,6 @@ func runE2E(t *testing.T, lib string) {
 	}
 	t.Logf("indexed %d comics", len(rows))
 
-	srv, err := serve.Start(prov{st: st, th: th})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer srv.Close()
-
 	for i := range rows {
 		r := &rows[i]
 		t.Logf("  %-14s pages=%-3d nonUTF8=%-5v title=%q commentKVs=%d", r.Filename, r.PageCount, r.HasNonUTF8, firstTitle(r), len(r.KV))
@@ -210,33 +202,33 @@ func runE2E(t *testing.T, lib string) {
 		if r.PageCount < 1 {
 			t.Errorf("%s: no pages", r.Path)
 		}
-		// cover over real HTTP
-		resp, err := http.Get(srv.CoverURL(r.ID))
+		ar, err := comic.Open(r.Path)
 		if err != nil {
-			t.Errorf("cover http: %v", err)
+			t.Errorf("open %s: %v", r.Path, err)
 			continue
 		}
-		cov, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK || !bytes.HasPrefix(cov, []byte("\xff\xd8\xff")) {
-			t.Errorf("%s: cover = %d (%d bytes), want 200 jpeg", r.Filename, resp.StatusCode, len(cov))
-		}
-		// first two pages over real HTTP and via provider decode path
 		for _, n := range []int{0, 1} {
-			pr, err := http.Get(srv.PageURL(r.ID, n))
+			rc, err := ar.OpenPage(n)
 			if err != nil {
-				t.Errorf("page http: %v", err)
+				t.Errorf("open page: %v", err)
 				continue
 			}
-			pb, _ := io.ReadAll(pr.Body)
-			pr.Body.Close()
-			if pr.StatusCode != http.StatusOK || len(pb) == 0 {
-				t.Errorf("%s page %d = %d, want 200", r.Filename, n, pr.StatusCode)
+			pb, readErr := io.ReadAll(rc)
+			rc.Close()
+			if readErr != nil || len(pb) == 0 {
+				t.Errorf("%s page %d could not be read: %v", r.Filename, n, readErr)
+				continue
 			}
-			if imgutil.SniffType(pb) != "image/png" && imgutil.SniffType(pb) != "image/jpeg" {
-				t.Errorf("%s page %d sniffed as %q", r.Filename, n, imgutil.SniffType(pb))
+			if _, _, err := imgutil.Decode(pb); err != nil {
+				t.Errorf("%s page %d does not decode: %v", r.Filename, n, err)
+			}
+			if n == 0 {
+				if _, err := imgutil.ThumbJPEG(pb, 256, 80); err != nil {
+					t.Errorf("%s cover thumbnail generation failed: %v", r.Filename, err)
+				}
 			}
 		}
+		ar.Close()
 	}
 }
 

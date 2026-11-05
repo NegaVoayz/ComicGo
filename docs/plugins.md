@@ -64,9 +64,9 @@ func (g Genre) Keep(m model.Meta) bool {
 
 ## 3. A card
 
-A card declares a `Type` string; the frontend maps that type to a Svelte
-component. Dynamic payloads (counts, etc.) come from the app's `CardData`
-binding keyed by the card id — the `Card.Render()` spec is static.
+A card declares a `Type` string; the Gio UI maps that type to a Go renderer.
+Dynamic payloads (counts, etc.) come from the app's `CardData` method keyed by
+the card id - the `Card.Render()` spec is static.
 
 ```go
 package mycard
@@ -81,19 +81,17 @@ func (Card) Render() model.CardSpec {
 }
 ```
 
-Frontend side:
+Gio side, in `ui_shelf.go`:
 
-```ts
-// frontend/src/lib/pluginRegistry.ts
-loaders["mycard"] = () => import('../components/MyCard.svelte')
-```
+```go
+func layoutMyCard(u *appUI, gtx layout.Context, data map[string]any) layout.Dimensions {
+	return u.label(gtx, fmt.Sprint(data["total"]), unit.Sp(20), colText, 1)
+}
 
-```svelte
-<!-- frontend/src/components/MyCard.svelte -->
-<script lang="ts">
-  let { data }: { data?: Record<string, any> } = $props()
-</script>
-<p>my card: {JSON.stringify(data)}</p>
+var cardRenderers = map[string]pluginCardRenderer{
+	"stats":  layoutStatsCard,
+	"mycard": layoutMyCard,
+}
 ```
 
 ## Wiring
@@ -123,7 +121,7 @@ var Cards = []Card{
 }
 ```
 
-Rebuild with `wails dev` or `wails build`. The new rule appears in every grid
+Rebuild with `go build`. The new rule appears in every grid
 section's dropdown; a new card id can be placed into `layout.json` as a
 `kind: "card"` section.
 

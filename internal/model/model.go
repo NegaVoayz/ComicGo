@@ -1,6 +1,6 @@
-// Package model defines the plain, JSON-serializable types that cross the
-// Go <-> webview boundary and that plugins operate on. It must not import
-// any other internal package so it can be a shared leaf dependency.
+// Package model defines the plain data types shared by the backend, Gio UI,
+// and plugins. It must not import any other internal package so it can be a
+// shared leaf dependency.
 package model
 
 import (
@@ -62,7 +62,6 @@ type ComicCard struct {
 	Fav        bool     `json:"fav"`
 	LastPage   int      `json:"lastPage"`
 	HasNonUTF8 bool     `json:"hasNonUtf8"`
-	CoverURL   string   `json:"coverUrl"` // filled by the transport layer
 }
 
 // ComicDetail is the full view used by the info panel / open action.
@@ -97,27 +96,11 @@ type RuleInfo struct {
 	Kind  string `json:"kind"` // "filter" | "sort"
 }
 
-// CoverRef is the transport-independent handle to a cover image.
-type CoverRef struct {
-	URL string `json:"url"` // http://.../cover/{id} or a data: URL
-}
-
-// PageRef is the transport-independent handle to a single reader page.
-type PageRef struct {
-	URL string `json:"url"`
-}
-
-// OpenResult is returned when a comic is opened for reading.
-type OpenResult struct {
-	ID        int64 `json:"id"`
-	PageCount int   `json:"pageCount"`
-}
-
 // CardSpec describes one rendered plugin card.
 type CardSpec struct {
-	// Type is the frontend component key registered in pluginRegistry.ts.
+	// Type is the Gio renderer key registered by the GUI.
 	Type string `json:"type"`
-	// Data is arbitrary JSON the plugin-authored Svelte component consumes.
+	// Data is arbitrary JSON the plugin-authored renderer consumes.
 	Data json.RawMessage `json:"data,omitempty"`
 }
 
@@ -130,16 +113,15 @@ type Progress struct {
 
 // About is shown by the app's About dialog.
 type About struct {
-	Version        string `json:"version"`
-	ConfigDir      string `json:"configDir"`
-	MediaTransport string `json:"mediaTransport"`
-	ComicCount     int    `json:"comicCount"`
+	Version    string `json:"version"`
+	ConfigDir  string `json:"configDir"`
+	ComicCount int    `json:"comicCount"`
 }
 
 // Settings is persisted in settings.json.
 type Settings struct {
 	LibraryRoots   []string `json:"libraryRoots"`
-	MediaTransport string   `json:"mediaTransport"` // "http" | "blob"
+	MediaTransport string   `json:"mediaTransport,omitempty"` // deprecated; retained for config compatibility
 	SchemaVersion  int      `json:"schemaVersion"`
 }
 
