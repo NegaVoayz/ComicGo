@@ -241,19 +241,11 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 		path.LineTo(f32.Pt(float32(cx+glyph), float32(cy)))
 	case chromeMaximize:
 		if maximized {
-			inner := glyph - 2
-			path.MoveTo(f32.Pt(float32(cx-inner), float32(cy-glyph)))
-			path.LineTo(f32.Pt(float32(cx+glyph), float32(cy-glyph)))
-			path.LineTo(f32.Pt(float32(cx+glyph), float32(cy+inner)))
-			path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy-inner)))
-			path.LineTo(f32.Pt(float32(cx+inner), float32(cy-inner)))
-			path.LineTo(f32.Pt(float32(cx+inner), float32(cy+glyph)))
+			back, front := captionRestoreRects(cx, cy, glyph)
+			addRectPath(&path, back)
+			addRectPath(&path, front)
 		} else {
-			path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy-glyph)))
-			path.LineTo(f32.Pt(float32(cx+glyph), float32(cy-glyph)))
-			path.LineTo(f32.Pt(float32(cx+glyph), float32(cy+glyph)))
-			path.LineTo(f32.Pt(float32(cx-glyph), float32(cy+glyph)))
-			path.Close()
+			addRectPath(&path, image.Rect(cx-glyph, cy-glyph, cx+glyph, cy+glyph))
 		}
 	case chromeClose:
 		path.MoveTo(f32.Pt(float32(cx-glyph), float32(cy-glyph)))
@@ -262,4 +254,19 @@ func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.
 		path.LineTo(f32.Pt(float32(cx-glyph), float32(cy+glyph)))
 	}
 	paint.FillShape(ops, col, clip.Stroke{Path: path.End(), Width: 1}.Op())
+}
+
+func captionRestoreRects(cx, cy, half int) (image.Rectangle, image.Rectangle) {
+	inset := maxInt(2, half-2)
+	back := image.Rect(cx-inset, cy-half, cx+half, cy+inset)
+	front := image.Rect(cx-half, cy-inset, cx+inset, cy+half)
+	return back, front
+}
+
+func addRectPath(path *clip.Path, rect image.Rectangle) {
+	path.MoveTo(f32.Pt(float32(rect.Min.X), float32(rect.Min.Y)))
+	path.LineTo(f32.Pt(float32(rect.Max.X), float32(rect.Min.Y)))
+	path.LineTo(f32.Pt(float32(rect.Max.X), float32(rect.Max.Y)))
+	path.LineTo(f32.Pt(float32(rect.Min.X), float32(rect.Max.Y)))
+	path.Close()
 }

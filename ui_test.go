@@ -341,6 +341,21 @@ func TestChromeActionTracksMaximizedState(t *testing.T) {
 	}
 }
 
+func TestRestoreGlyphUsesTwoClosedOverlappingRects(t *testing.T) {
+	back, front := captionRestoreRects(20, 20, 6)
+	for name, rect := range map[string]image.Rectangle{"back": back, "front": front} {
+		if rect.Empty() || rect.Dx() != rect.Dy() {
+			t.Fatalf("%s restore rectangle = %v; want a non-empty square", name, rect)
+		}
+	}
+	if back.Intersect(front).Empty() {
+		t.Fatal("restore glyph rectangles do not overlap")
+	}
+	if back == front {
+		t.Fatal("restore glyph rectangles must be offset")
+	}
+}
+
 func TestWindowConfigUpdatesChromeState(t *testing.T) {
 	var u appUI
 	u.applyWindowConfig(app.Config{Mode: app.Maximized, Focused: true})
