@@ -816,9 +816,10 @@ func (u *appUI) layoutRuleMenuPanel(gtx layout.Context, s *sectionState, options
 				selected = s.SortRuleID == option.ID
 			}
 			children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				style := buttonStyle{plain: true}
+				gtx.Constraints.Min.X = gtx.Constraints.Max.X
+				style := buttonStyle{plain: true, centered: true}
 				if selected {
-					style = buttonStyle{primary: true}
+					style = buttonStyle{primary: true, centered: true}
 				}
 				return u.button(gtx, &s.menuClicks[i], option.Label, style)
 			}))

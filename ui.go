@@ -945,6 +945,7 @@ type buttonStyle struct {
 	compact  bool
 	plain    bool
 	danger   bool
+	centered bool
 }
 
 func (u *appUI) button(gtx layout.Context, click *widget.Clickable, label string, style buttonStyle) layout.Dimensions {
@@ -1000,6 +1001,11 @@ func (u *appUI) button(gtx layout.Context, click *widget.Clickable, label string
 			}),
 			layout.Stacked(func(gtx layout.Context) layout.Dimensions {
 				return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					if style.centered {
+						return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return u.labelColor(gtx, label, unit.Sp(12), fg, 1, font.Normal)
+						})
+					}
 					return u.labelColor(gtx, label, unit.Sp(12), fg, 1, font.Normal)
 				})
 			}),
