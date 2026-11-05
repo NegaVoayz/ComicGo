@@ -656,43 +656,47 @@ func (u *appUI) layoutTopbar(gtx layout.Context) layout.Dimensions {
 		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
 			gtx.Constraints.Min.Y = gtx.Dp(52)
 			gtx.Constraints.Max.Y = gtx.Dp(52)
-			return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle, Gap: 8}.Layout(gtx,
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return u.label(gtx, "ComicGo", unit.Sp(17), colText, 1)
-					}),
-					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-						return u.layoutRoots(gtx)
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						if n := u.indexed; n > 0 {
-							return u.indexedBadge(gtx, n)
-						}
-						return layout.Dimensions{}
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						if u.scanning {
-							return u.layoutScanControls(gtx)
-						}
-						return layout.Flex{Axis: layout.Horizontal, Gap: 6}.Layout(gtx,
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return u.button(gtx, &u.top.importToggle, "Import", buttonStyle{primary: true, disabled: len(u.settings.LibraryRoots) == 0 || u.importing})
-							}),
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return u.button(gtx, &u.top.add, "+ Folder", buttonStyle{})
-							}),
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return u.button(gtx, &u.top.scan, "Scan", buttonStyle{disabled: len(u.settings.LibraryRoots) == 0})
-							}),
-						)
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return u.button(gtx, &u.top.reloadLayout, "Layout", buttonStyle{})
-					}),
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return u.button(gtx, &u.top.about, "About", buttonStyle{})
-					}),
-				)
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					gtx.Constraints.Min.Y = 0
+					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle, Gap: 8}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							defer op.Offset(image.Pt(0, gtx.Dp(unit.Dp(1)))).Push(gtx.Ops).Pop()
+							return u.label(gtx, "ComicGo", unit.Sp(17), colText, 1)
+						}),
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							return u.layoutRoots(gtx)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							if n := u.indexed; n > 0 {
+								return u.indexedBadge(gtx, n)
+							}
+							return layout.Dimensions{}
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							if u.scanning {
+								return u.layoutScanControls(gtx)
+							}
+							return layout.Flex{Axis: layout.Horizontal, Gap: 6}.Layout(gtx,
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return u.button(gtx, &u.top.importToggle, "Import", buttonStyle{primary: true, disabled: len(u.settings.LibraryRoots) == 0 || u.importing})
+								}),
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return u.button(gtx, &u.top.add, "+ Folder", buttonStyle{})
+								}),
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									return u.button(gtx, &u.top.scan, "Scan", buttonStyle{disabled: len(u.settings.LibraryRoots) == 0})
+								}),
+							)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return u.button(gtx, &u.top.reloadLayout, "Layout", buttonStyle{})
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return u.button(gtx, &u.top.about, "About", buttonStyle{})
+						}),
+					)
+				})
 			})
 		}),
 	)
@@ -1033,10 +1037,10 @@ func (u *appUI) indexedBadge(gtx layout.Context, count int) layout.Dimensions {
 }
 
 func (u *appUI) layoutRootChip(gtx layout.Context, name string, remove *widget.Clickable) layout.Dimensions {
-	height := gtx.Dp(unit.Dp(30))
+	height := gtx.Dp(unit.Dp(28))
 	closeSize := gtx.Dp(unit.Dp(26))
 	gtx.Constraints.Max.X = minInt(gtx.Constraints.Max.X, gtx.Dp(unit.Dp(230)))
-	return layout.Stack{}.Layout(gtx,
+	return layout.Stack{Alignment: layout.Center}.Layout(gtx,
 		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
 			size := image.Pt(gtx.Constraints.Min.X, height)
 			border := colLine
@@ -1049,12 +1053,13 @@ func (u *appUI) layoutRootChip(gtx layout.Context, name string, remove *widget.C
 			return layout.Dimensions{Size: size}
 		}),
 		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-			gtx.Constraints.Min.Y = height
+			gtx.Constraints.Min.Y = 0
 			gtx.Constraints.Max.Y = height
 			return layout.Inset{Left: unit.Dp(8), Right: unit.Dp(3)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						gtx.Constraints.Max.X = maxInt(0, gtx.Constraints.Max.X-closeSize)
+						defer op.Offset(image.Pt(0, gtx.Dp(unit.Dp(2)))).Push(gtx.Ops).Pop()
 						return u.label(gtx, name, unit.Sp(12), colDim, 1)
 					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
