@@ -396,6 +396,11 @@ func TestTopBarDragDoesNotCoverControls(t *testing.T) {
 	if action, ok := router.ActionAt(f32.Pt(500, 26)); !ok || action != system.ActionMove {
 		t.Fatalf("empty title bar action = %v, %v; want ActionMove", action, ok)
 	}
+	for _, x := range []float32{800, 1000, 1150} {
+		if action, ok := router.ActionAt(f32.Pt(x, 48)); !ok || action != system.ActionMove {
+			t.Fatalf("right title bar action at x=%v = %v, %v; want ActionMove", x, action, ok)
+		}
+	}
 	if action, ok := router.ActionAt(f32.Pt(748, 26)); ok && action == system.ActionMove {
 		t.Fatalf("Import button action = %v, %v; title bar move must not cover it", action, ok)
 	}

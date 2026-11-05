@@ -1102,9 +1102,11 @@ func (u *appUI) layoutDetailTop(gtx layout.Context) layout.Dimensions {
 		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
 			gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(52))
 			gtx.Constraints.Max.Y = gtx.Constraints.Min.Y
-			paint.Fill(gtx.Ops, colBGSoft)
-			paint.FillShape(gtx.Ops, colLine, clip.Rect{Max: image.Pt(gtx.Constraints.Max.X, 1)}.Op())
-			return layout.Dimensions{Size: gtx.Constraints.Max}
+			return u.chrome.decorations.LayoutMove(gtx, func(gtx layout.Context) layout.Dimensions {
+				paint.Fill(gtx.Ops, colBGSoft)
+				paint.FillShape(gtx.Ops, colLine, clip.Rect{Max: image.Pt(gtx.Constraints.Max.X, 1)}.Op())
+				return layout.Dimensions{Size: gtx.Constraints.Max}
+			})
 		}),
 		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
 			gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(52))

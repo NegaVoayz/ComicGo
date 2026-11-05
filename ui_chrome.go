@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	captionButtonWidthDp  = 54
-	captionButtonHeightDp = 36
+	captionButtonWidthDp  = 56
+	captionButtonHeightDp = 40
 	macCaptionAreaDp      = 74
 )
 
