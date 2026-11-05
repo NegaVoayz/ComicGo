@@ -262,11 +262,63 @@ func (u *appUI) layoutTagBar(gtx layout.Context, s *sectionState) layout.Dimensi
 				return u.label(gtx, "TAGS", unit.Sp(10), colDim, 1)
 			case i <= len(u.tags):
 				tag := u.tags[i-1]
-				return u.button(gtx, &s.tagClicks[i-1], tag+" x", buttonStyle{primary: true, compact: true})
+				return u.layoutSearchTag(gtx, &s.tagClicks[i-1], tag)
 			default:
 				return u.button(gtx, &s.clearTags, "Clear", buttonStyle{plain: true, compact: true})
 			}
 		})
+	})
+}
+
+func (u *appUI) layoutSearchTag(gtx layout.Context, remove *widget.Clickable, tag string) layout.Dimensions {
+	return layout.Background{}.Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			size := gtx.Constraints.Min
+			paint.FillShape(gtx.Ops, colAccent, clip.RRect{Rect: image.Rectangle{Max: size}, NE: 6, NW: 6, SE: 6, SW: 6}.Op(gtx.Ops))
+			inner := image.Rect(1, 1, maxInt(1, size.X-1), maxInt(1, size.Y-1))
+			paint.FillShape(gtx.Ops, colAccentBG, clip.RRect{Rect: inner, NE: 5, NW: 5, SE: 5, SW: 5}.Op(gtx.Ops))
+			return layout.Dimensions{Size: size}
+		},
+		func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Top: unit.Dp(1), Bottom: unit.Dp(1), Left: unit.Dp(5), Right: unit.Dp(3)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Horizontal, Gap: 3, Alignment: layout.Middle}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return u.label(gtx, tag, unit.Sp(12), colAccent, 1)
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return u.searchTagRemoveButton(gtx, remove)
+					}),
+				)
+			})
+		},
+	)
+}
+
+func (u *appUI) searchTagRemoveButton(gtx layout.Context, click *widget.Clickable) layout.Dimensions {
+	size := gtx.Dp(unit.Dp(18))
+	gtx.Constraints.Min = image.Pt(size, size)
+	gtx.Constraints.Max = gtx.Constraints.Min
+	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		if click.Hovered() {
+			paint.FillShape(gtx.Ops, color.NRGBA{R: 0xd9, G: 0x6c, B: 0x6c, A: 0x24}, clip.RRect{Rect: image.Rectangle{Max: gtx.Constraints.Min}, NE: 5, NW: 5, SE: 5, SW: 5}.Op(gtx.Ops))
+		}
+		col := colAccent
+		if click.Hovered() {
+			col = colFav
+		}
+		center := float32(size) / 2
+		radius := float32(gtx.Dp(unit.Dp(4)))
+		var path clip.Path
+		path.Begin(gtx.Ops)
+		path.MoveTo(f32.Pt(center-radius, center-radius))
+		path.LineTo(f32.Pt(center+radius, center+radius))
+		path.MoveTo(f32.Pt(center+radius, center-radius))
+		path.LineTo(f32.Pt(center-radius, center+radius))
+		paint.FillShape(gtx.Ops, col, clip.Stroke{
+			Path:  path.End(),
+			Width: float32(maxInt(1, gtx.Dp(unit.Dp(1.4)))),
+		}.Op())
+		return layout.Dimensions{Size: image.Pt(size, size)}
 	})
 }
 
@@ -387,16 +439,19 @@ func (u *appUI) layoutCardPlaceholder(gtx layout.Context, width int) layout.Dime
 }
 
 func (u *appUI) layoutCard(gtx layout.Context, card *cardState, width int) layout.Dimensions {
-	if card.open.Clicked(gtx) {
-		u.openDetail(card.card)
-	}
-	if card.favorite.Clicked(gtx) {
-		u.toggleFavorite(card)
-	}
+	tagClicked := false
 	for i := range card.tagClicks {
 		if i < len(card.card.Tags) && card.tagClicks[i].Clicked(gtx) {
 			u.addTag(card.card.Tags[i])
+			tagClicked = true
 		}
+	}
+	favoriteClicked := card.favorite.Clicked(gtx)
+	if card.open.Clicked(gtx) && !tagClicked && !favoriteClicked {
+		u.openDetail(card.card)
+	}
+	if favoriteClicked {
+		u.toggleFavorite(card)
 	}
 	coverH := width * 4 / 3
 	gtx.Constraints.Min = image.Pt(width, coverH+captionH)
