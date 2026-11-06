@@ -45,15 +45,17 @@ type SectionState struct {
 	MenuClose     widget.Clickable
 	MenuClicks    []widget.Clickable
 	TagClicks     []widget.Clickable
+	AuthorClicks  []widget.Clickable
 	ClearTags     widget.Clickable
 	LastFirst     int
 }
 
 type CardState struct {
-	Card      Model.ComicCard
-	Open      widget.Clickable
-	Favorite  widget.Clickable
-	TagClicks []widget.Clickable
+	Card        Model.ComicCard
+	Open        widget.Clickable
+	Favorite    widget.Clickable
+	AuthorClick widget.Clickable
+	TagClicks   []widget.Clickable
 }
 
 func NewCardState(card Model.ComicCard) *CardState {

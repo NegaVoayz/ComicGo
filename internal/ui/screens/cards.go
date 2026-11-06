@@ -67,6 +67,19 @@ func (u *Renderer) addTag(tag string) {
 	u.setTags(append(append([]string(nil), u.Tags...), tag))
 }
 
+func (u *Renderer) addAuthor(author string) {
+	author = strings.TrimSpace(author)
+	if author == "" {
+		return
+	}
+	for _, existing := range u.Authors {
+		if strings.EqualFold(existing, author) {
+			return
+		}
+	}
+	u.setFilters(u.Tags, append(append([]string(nil), u.Authors...), author))
+}
+
 func (u *Renderer) removeTag(tag string) {
 	out := make([]string, 0, len(u.Tags))
 	for _, t := range u.Tags {
@@ -77,12 +90,33 @@ func (u *Renderer) removeTag(tag string) {
 	u.setTags(out)
 }
 
+func (u *Renderer) removeAuthor(author string) {
+	out := make([]string, 0, len(u.Authors))
+	for _, a := range u.Authors {
+		if a != author {
+			out = append(out, a)
+		}
+	}
+	u.setFilters(u.Tags, out)
+}
+
 func (u *Renderer) setTags(tags []string) {
+	u.setFilters(tags, u.Authors)
+}
+
+func (u *Renderer) clearFilters() {
+	u.setFilters(nil, nil)
+}
+
+func (u *Renderer) setFilters(tags, authors []string) {
 	u.Tags = tags
+	u.Authors = authors
 	for _, s := range u.Sections {
 		s.TagClicks = make([]widget.Clickable, len(tags))
+		s.AuthorClicks = make([]widget.Clickable, len(authors))
 	}
 	u.RefreshShelfQuery()
+	u.Invalidate()
 }
 
 func (u *Renderer) setSearch(text string, source *SectionState) {
@@ -124,6 +158,11 @@ func (u *Renderer) query() string {
 		tag = strings.ReplaceAll(tag, `\`, `\\`)
 		tag = strings.ReplaceAll(tag, `"`, `\"`)
 		parts = append(parts, `tag:"`+tag+`"`)
+	}
+	for _, author := range u.Authors {
+		author = strings.ReplaceAll(author, `\`, `\\`)
+		author = strings.ReplaceAll(author, `"`, `\"`)
+		parts = append(parts, `author:"`+author+`"`)
 	}
 	return strings.Join(parts, " ")
 }

@@ -15,8 +15,9 @@ func (a *App) ListAuthors() ([]string, error) {
 }
 
 type searchQuery struct {
-	text []string // lower-cased substrings, all must occur somewhere
-	tags []string // whole-tag matches (case-insensitive), all must be present
+	text    []string // lower-cased substrings, all must occur somewhere
+	tags    []string // whole-tag matches (case-insensitive), all must be present
+	authors []string // exact author matches (case-insensitive), all must be present
 }
 
 // parseSearch turns a search box string into structured terms. Plain words are
@@ -35,6 +36,11 @@ func parseSearch(s string) searchQuery {
 			v = strings.TrimSpace(v)
 			if v != "" {
 				q.tags = append(q.tags, v)
+			}
+		} else if v, ok := strings.CutPrefix(tok, "author:"); ok {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				q.authors = append(q.authors, v)
 			}
 		} else {
 			q.text = append(q.text, strings.ToLower(tok))
@@ -90,7 +96,7 @@ func splitSearchTerms(s string) []string {
 func (a *App) selection(search, filterRuleID string) []model.Meta {
 	list := a.filtered(filterRuleID)
 	q := parseSearch(search)
-	if len(q.text) == 0 && len(q.tags) == 0 {
+	if len(q.text) == 0 && len(q.tags) == 0 && len(q.authors) == 0 {
 		return list
 	}
 	out := make([]model.Meta, 0, len(list))
@@ -110,6 +116,11 @@ func searchQueryMatch(m model.Meta, q searchQuery) bool {
 	}
 	for _, tag := range q.tags {
 		if !metaHasTag(m, tag) {
+			return false
+		}
+	}
+	for _, author := range q.authors {
+		if !strings.EqualFold(strings.TrimSpace(m.KV["Author"]), author) {
 			return false
 		}
 	}

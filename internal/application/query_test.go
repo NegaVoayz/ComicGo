@@ -87,13 +87,15 @@ func TestSearchMatching(t *testing.T) {
 	a.store = st
 
 	cases := map[string]int{
-		"alpha":  1, // Title value
-		"space":  1, // Title value substring
-		"zeta":   1, // filename (title fallback strips ext, filename still matches)
-		"tanaka": 1, // metadata value
-		"title":  0, // metadata key, not user-visible content
-		"nope":   0,
-		"":       3, // empty search = all
+		`author:"Tanaka Yoshi"`: 1,
+		"author:Tanaka":         0,
+		"alpha":                 1, // Title value
+		"space":                 1, // Title value substring
+		"zeta":                  1, // filename (title fallback strips ext, filename still matches)
+		"tanaka":                1, // metadata value
+		"title":                 0, // metadata key, not user-visible content
+		"nope":                  0,
+		"":                      3, // empty search = all
 	}
 	for q, want := range cases {
 		if got := a.CountMatching(q, ""); got != want {
@@ -152,10 +154,12 @@ func TestPurgeRootOnlyAffectsTargetDir(t *testing.T) {
 
 func TestParseSearchTerms(t *testing.T) {
 	tests := []struct {
-		in   string
-		text []string
-		tags []string
+		in      string
+		text    []string
+		tags    []string
+		authors []string
 	}{
+		{in: `author:"Tanaka Yoshi" x`, text: []string{"x"}, authors: []string{"Tanaka Yoshi"}},
 		{in: "", text: nil, tags: nil},
 		{in: "alpha  beta", text: []string{"alpha", "beta"}, tags: nil},
 		{in: `tag:ロリ`, text: nil, tags: []string{"ロリ"}},
@@ -166,9 +170,9 @@ func TestParseSearchTerms(t *testing.T) {
 	}
 	for _, tt := range tests {
 		q := parseSearch(tt.in)
-		if !eqStrings(q.text, tt.text) || !eqStrings(q.tags, tt.tags) {
-			t.Errorf("parseSearch(%q) = {text:%v tags:%v}, want {text:%v tags:%v}",
-				tt.in, q.text, q.tags, tt.text, tt.tags)
+		if !eqStrings(q.text, tt.text) || !eqStrings(q.tags, tt.tags) || !eqStrings(q.authors, tt.authors) {
+			t.Errorf("parseSearch(%q) = {text:%v tags:%v authors:%v}, want {text:%v tags:%v authors:%v}",
+				tt.in, q.text, q.tags, q.authors, tt.text, tt.tags, tt.authors)
 		}
 	}
 }

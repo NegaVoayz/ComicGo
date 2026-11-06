@@ -13,6 +13,7 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
+	"gioui.org/x/outlay"
 )
 
 func (u *Renderer) layoutSearchTag(gtx layout.Context, remove *widget.Clickable, tag string) layout.Dimensions {
@@ -37,6 +38,26 @@ func (u *Renderer) layoutSearchTag(gtx layout.Context, remove *widget.Clickable,
 			})
 		},
 	)
+}
+
+func (u *Renderer) layoutTagBar(gtx layout.Context, s *SectionState) layout.Dimensions {
+	count := len(u.Authors) + len(u.Tags) + 2
+	return outlay.FlowWrap{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx, count, func(gtx layout.Context, i int) layout.Dimensions {
+		return layout.Inset{Right: unit.Dp(5), Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			switch {
+			case i == 0:
+				return u.Label(gtx, "FILTERS", unit.Sp(10), colDim, 1)
+			case i <= len(u.Authors):
+				author := u.Authors[i-1]
+				return u.layoutSearchTag(gtx, &s.AuthorClicks[i-1], "Author: "+author)
+			case i <= len(u.Authors)+len(u.Tags):
+				tag := u.Tags[i-len(u.Authors)-1]
+				return u.layoutSearchTag(gtx, &s.TagClicks[i-len(u.Authors)-1], tag)
+			default:
+				return u.Button(gtx, &s.ClearTags, "Clear", ButtonStyle{Plain: true, Compact: true})
+			}
+		})
+	})
 }
 
 func (u *Renderer) searchTagRemoveButton(gtx layout.Context, click *widget.Clickable) layout.Dimensions {
@@ -143,15 +164,19 @@ func (u *Renderer) layoutCardPlaceholder(gtx layout.Context, width int) layout.D
 }
 
 func (u *Renderer) layoutCard(gtx layout.Context, card *CardState, width int) layout.Dimensions {
-	tagClicked := false
+	filterClicked := false
 	for i := range card.TagClicks {
 		if i < len(card.Card.Tags) && card.TagClicks[i].Clicked(gtx) {
 			u.addTag(card.Card.Tags[i])
-			tagClicked = true
+			filterClicked = true
 		}
 	}
+	if card.Card.Author != "" && card.AuthorClick.Clicked(gtx) {
+		u.addAuthor(card.Card.Author)
+		filterClicked = true
+	}
 	favoriteClicked := card.Favorite.Clicked(gtx)
-	if card.Open.Clicked(gtx) && !tagClicked && !favoriteClicked {
+	if card.Open.Clicked(gtx) && !filterClicked && !favoriteClicked {
 		u.openDetail(card.Card)
 	}
 	if favoriteClicked {
@@ -232,7 +257,7 @@ func (u *Renderer) layoutCardMeta(gtx layout.Context, card *CardState, width, he
 			if card.Card.Author == "" {
 				return layout.Dimensions{}
 			}
-			return u.Label(gtx, card.Card.Author, unit.Sp(11), colDim, 1)
+			return u.Button(gtx, &card.AuthorClick, card.Card.Author, ButtonStyle{Plain: true, Compact: true})
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			children := []layout.FlexChild{}

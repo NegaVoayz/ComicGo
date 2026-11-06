@@ -128,8 +128,9 @@ type UI struct {
 	ShelfList   layout.List
 	WelcomeAdd  widget.Clickable
 
-	Search string
-	Tags   []string
+	Search  string
+	Tags    []string
+	Authors []string
 
 	Scanning        bool
 	ScanDone        int

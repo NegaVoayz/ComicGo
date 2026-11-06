@@ -1,25 +1,30 @@
 package screens
 
 import (
+	"comicgo/internal/model"
 	. "comicgo/internal/ui"
 
 	"image"
 	"testing"
 
+	"gioui.org/f32"
 	"gioui.org/io/input"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/unit"
 	"gioui.org/widget"
 )
 
 func TestTagQueryEscaping(t *testing.T) {
 	u := renderer(&UI{
-		Search: `space  opera`,
-		Tags:   []string{`quote " slash \`},
+		Search:  `space  opera`,
+		Tags:    []string{`quote " slash \`},
+		Authors: []string{`author " slash \`},
 	})
 	got := u.query()
-	want := `space  opera tag:"quote \" slash \\"`
+	want := `space  opera tag:"quote \" slash \\" author:"author \" slash \\"`
 	if got != want {
 		t.Fatalf("query = %q, want %q", got, want)
 	}
@@ -135,5 +140,53 @@ func TestAuthorOptionsKeepCurrentValueAndDeduplicate(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("author options = %q, want %q", got, want)
 		}
+	}
+}
+
+func TestAuthorChipFiltersInsteadOfOpeningDetail(t *testing.T) {
+	ui := NewUI(nil)
+	const id = int64(7)
+	ui.Covers[id] = image.NewRGBA(image.Rect(0, 0, 1, 1))
+	card := NewCardState(model.ComicCard{
+		ID: id, Title: "Example", Author: "Artist", PageCount: 1,
+	})
+	router := new(input.Router)
+	ops := new(op.Ops)
+	frame := func() {
+		gtx := layout.Context{
+			Ops: ops, Source: router.Source(),
+			Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Exact(image.Pt(200, 342)),
+		}
+		renderer(ui).layoutCard(gtx, card, 200)
+		router.Frame(ops)
+		ops.Reset()
+	}
+	frame()
+	var position f32.Point
+	for y := 270; y < 342 && position == (f32.Point{}); y += 2 {
+		for x := 0; x < 200; x += 2 {
+			probe := f32.Pt(float32(x), float32(y))
+			router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: probe})
+			frame()
+			if card.AuthorClick.Hovered() {
+				position = probe
+				break
+			}
+		}
+	}
+	if position == (f32.Point{}) {
+		t.Fatal("could not locate author chip")
+	}
+	router.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1, Buttons: pointer.ButtonPrimary, Position: position})
+	frame()
+	router.Queue(pointer.Event{Kind: pointer.Release, Source: pointer.Mouse, PointerID: 1, Position: position})
+	frame()
+	frame()
+	if len(ui.Authors) != 1 || ui.Authors[0] != "Artist" {
+		t.Fatalf("author filters = %q, want Artist", ui.Authors)
+	}
+	if ui.Screen != ScreenShelf || ui.Detail.Id != 0 {
+		t.Fatalf("author click opened detail screen: screen=%v detail=%d", ui.Screen, ui.Detail.Id)
 	}
 }

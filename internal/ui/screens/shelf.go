@@ -15,7 +15,6 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
-	"gioui.org/x/outlay"
 )
 
 func (u *Renderer) resetSections() {
@@ -120,8 +119,17 @@ func (u *Renderer) layoutSection(gtx layout.Context, s *SectionState, viewportH 
 			return layout.Dimensions{}
 		}
 	}
+	if len(s.AuthorClicks) != len(u.Authors) {
+		s.AuthorClicks = make([]widget.Clickable, len(u.Authors))
+	}
+	for i := range s.AuthorClicks {
+		if s.AuthorClicks[i].Clicked(gtx) {
+			u.removeAuthor(u.Authors[i])
+			return layout.Dimensions{}
+		}
+	}
 	if s.ClearTags.Clicked(gtx) {
-		u.setTags(nil)
+		u.clearFilters()
 		return layout.Dimensions{}
 	}
 	if s.FilterClick.Clicked(gtx) {
@@ -143,7 +151,7 @@ func (u *Renderer) layoutSection(gtx layout.Context, s *SectionState, viewportH 
 				return dims
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if len(u.Tags) == 0 {
+				if len(u.Tags) == 0 && len(u.Authors) == 0 {
 					return layout.Dimensions{}
 				}
 				return u.layoutTagBar(gtx, s)
@@ -223,22 +231,6 @@ func (u *Renderer) layoutSectionHeader(gtx layout.Context, s *SectionState) layo
 		}),
 	}
 	return layout.Flex{Axis: layout.Vertical, Gap: 5}.Layout(gtx, children...)
-}
-
-func (u *Renderer) layoutTagBar(gtx layout.Context, s *SectionState) layout.Dimensions {
-	return outlay.FlowWrap{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx, len(u.Tags)+2, func(gtx layout.Context, i int) layout.Dimensions {
-		return layout.Inset{Right: unit.Dp(5), Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			switch {
-			case i == 0:
-				return u.Label(gtx, "TAGS", unit.Sp(10), colDim, 1)
-			case i <= len(u.Tags):
-				tag := u.Tags[i-1]
-				return u.layoutSearchTag(gtx, &s.TagClicks[i-1], tag)
-			default:
-				return u.Button(gtx, &s.ClearTags, "Clear", ButtonStyle{Plain: true, Compact: true})
-			}
-		})
-	})
 }
 
 type Renderer struct{ *UI }
