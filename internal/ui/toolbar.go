@@ -196,13 +196,8 @@ func (u *UI) HandleKey(ev key.Event) {
 		switch {
 		case u.Screen == ScreenReader:
 			u.CloseReader()
-		case u.Detail.AuthorOpen:
-			u.Detail.AuthorOpen = false
-			u.Invalidate()
 		case u.Detail.EditOpen:
 			u.Detail.EditOpen = false
-			u.Detail.AuthorOpen = false
-			u.Invalidate()
 		case u.AboutOpen:
 			u.AboutOpen = false
 		case u.ImportMenu:

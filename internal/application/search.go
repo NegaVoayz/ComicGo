@@ -6,14 +6,6 @@ import (
 	"comicgo/internal/model"
 )
 
-// ListAuthors returns the distinct authors currently present in the index.
-func (a *App) ListAuthors() ([]string, error) {
-	if a.store == nil {
-		return nil, nil
-	}
-	return a.store.AuthorValues()
-}
-
 type searchQuery struct {
 	text []string // lower-cased substrings, all must occur somewhere
 	tags []string // whole-tag matches (case-insensitive), all must be present

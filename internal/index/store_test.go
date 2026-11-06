@@ -1,7 +1,6 @@
 package index
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -154,39 +153,6 @@ func TestMovePathKeepsIdentity(t *testing.T) {
 	// Moving a path that is not indexed reports no rows.
 	if err := s.MovePath(filepath.Join("C:", "lib", "ghost.cbz"), filepath.Join("C:", "lib", "g.cbz")); err == nil {
 		t.Error("expected error moving an unindexed path")
-	}
-}
-
-func TestAuthorValuesAreDistinctAndSorted(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	for i, author := range []string{"Zed", "alpha", "Alpha", "  Beta  "} {
-		rec := Record{
-			Path: filepath.Join("C:", "zips", fmt.Sprintf("%d.cbz", i)),
-			Dir:  filepath.Join("C:", "zips"), Filename: fmt.Sprintf("%d.cbz", i),
-			KV: map[string]string{"Author": author},
-		}
-		if _, err := s.CommitComic(rec); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got, err := s.AuthorValues()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"Alpha", "Beta", "Zed"}
-	if len(got) != len(want) {
-		t.Fatalf("authors = %q, want %q", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("authors = %q, want %q", got, want)
-		}
 	}
 }
 

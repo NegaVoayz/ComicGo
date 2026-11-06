@@ -256,7 +256,6 @@ type ScreenHooks interface {
 	LayoutDetail(*UI, layout.Context) layout.Dimensions
 	LayoutReader(*UI, layout.Context) layout.Dimensions
 	HandleReaderKey(*UI, key.Event) bool
-	HandleAuthorsLoaded(*UI, AuthorsLoadedEvent)
 	LayoutMetadataEditor(*UI, layout.Context)
 }
 
@@ -278,9 +277,8 @@ func (noScreenHooks) LayoutDetail(*UI, layout.Context) layout.Dimensions {
 func (noScreenHooks) LayoutReader(*UI, layout.Context) layout.Dimensions {
 	return layout.Dimensions{}
 }
-func (noScreenHooks) HandleReaderKey(*UI, key.Event) bool         { return false }
-func (noScreenHooks) HandleAuthorsLoaded(*UI, AuthorsLoadedEvent) {}
-func (noScreenHooks) LayoutMetadataEditor(*UI, layout.Context)    {}
+func (noScreenHooks) HandleReaderKey(*UI, key.Event) bool      { return false }
+func (noScreenHooks) LayoutMetadataEditor(*UI, layout.Context) {}
 
 var screenHooks ScreenHooks = noScreenHooks{}
 
