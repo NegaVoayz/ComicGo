@@ -130,11 +130,15 @@ func (u *Controller) ApplyConfig(config app.Config) {
 }
 
 func captionHitRegions(width, height, scale int) chromeHitRegions {
+	return captionHitRegionsForOS(runtime.GOOS, width, height, scale)
+}
+
+func captionHitRegionsForOS(goos string, width, height, scale int) chromeHitRegions {
 	if scale < 1 {
 		scale = 1
 	}
 	caption := image.Rect(0, 0, width, height)
-	if runtime.GOOS == "darwin" {
+	if goos == "darwin" {
 		cy := height / 2
 		d := 12 * scale
 		top, bottom := cy-d, cy+d

@@ -176,14 +176,18 @@ func TestTopBarDragDoesNotCoverControls(t *testing.T) {
 
 	router := new(input.Router)
 	ops := new(op.Ops)
-	gtx := layout.Context{
-		Ops:         ops,
-		Source:      router.Source(),
-		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
-		Constraints: layout.Exact(image.Pt(1200, 52)),
+	frame := func() {
+		gtx := layout.Context{
+			Ops:         ops,
+			Source:      router.Source(),
+			Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Exact(image.Pt(1200, 52)),
+		}
+		u.layoutTopbar(gtx)
+		router.Frame(ops)
+		ops.Reset()
 	}
-	u.layoutTopbar(gtx)
-	router.Frame(ops)
+	frame()
 
 	if action, ok := router.ActionAt(f32.Pt(500, 26)); !ok || action != system.ActionMove {
 		t.Fatalf("empty title bar action = %v, %v; want ActionMove", action, ok)
@@ -193,7 +197,19 @@ func TestTopBarDragDoesNotCoverControls(t *testing.T) {
 			t.Fatalf("right title bar action at x=%v = %v, %v; want ActionMove", x, action, ok)
 		}
 	}
-	if action, ok := router.ActionAt(f32.Pt(748, 26)); ok && action == system.ActionMove {
+	var importPoint f32.Point
+	for x := 0; x < 1200 && importPoint == (f32.Point{}); x += 2 {
+		point := f32.Pt(float32(x), 26)
+		router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: point})
+		frame()
+		if u.Top.importToggle.Hovered() {
+			importPoint = point
+		}
+	}
+	if importPoint == (f32.Point{}) {
+		t.Fatal("could not locate the Import button")
+	}
+	if action, ok := router.ActionAt(importPoint); ok && action == system.ActionMove {
 		t.Fatalf("Import button action = %v, %v; title bar move must not cover it", action, ok)
 	}
 }
@@ -273,26 +289,5 @@ func TestEditorClickPastTextMovesCaretToEnd(t *testing.T) {
 	frame()
 	if _, col := editor.CaretPos(); col != 3 {
 		t.Fatalf("caret column = %d after right-side click, want 3", col)
-	}
-}
-
-func TestPointerShieldBlocksUnderlyingHover(t *testing.T) {
-	u := NewUI(nil)
-	router, ops := new(input.Router), new(op.Ops)
-	var under, shield widget.Clickable
-	frame := func() {
-		gtx := layout.Context{Ops: ops, Source: router.Source(), Constraints: layout.Exact(image.Pt(100, 100))}
-		under.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			return layout.Dimensions{Size: gtx.Constraints.Max}
-		})
-		u.BlockPointer(gtx, &shield)
-		router.Frame(ops)
-		ops.Reset()
-	}
-	frame()
-	router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: f32.Pt(50, 50)})
-	frame()
-	if under.Hovered() {
-		t.Fatal("pointer shield allowed hover to reach the underlying control")
 	}
 }

@@ -16,38 +16,51 @@ import (
 )
 
 func TestCaptionControlHitRegions(t *testing.T) {
-	regions := captionHitRegions(1200, 52, 1)
-	tests := []struct {
-		name string
-		part chromePart
+	platforms := []struct {
+		name      string
+		goos      string
+		landscape bool
 	}{
-		{name: "minimize", part: chromeMinimize},
-		{name: "maximize", part: chromeMaximize},
-		{name: "close", part: chromeClose},
+		{name: "windows", goos: "windows", landscape: true},
+		{name: "darwin", goos: "darwin"},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rect := chromeRegionForPart(regions, tc.part)
-			if rect.Empty() {
-				t.Fatalf("%s hit region is empty", tc.name)
+	for _, platform := range platforms {
+		t.Run(platform.name, func(t *testing.T) {
+			regions := captionHitRegionsForOS(platform.goos, 1200, 52, 1)
+			tests := []struct {
+				name string
+				part chromePart
+			}{
+				{name: "minimize", part: chromeMinimize},
+				{name: "maximize", part: chromeMaximize},
+				{name: "close", part: chromeClose},
 			}
-			if rect.Dy() >= rect.Dx() {
-				t.Fatalf("%s control is %v; want landscape proportions", tc.name, rect.Size())
+			for _, tc := range tests {
+				t.Run(tc.name, func(t *testing.T) {
+					rect := chromeRegionForPart(regions, tc.part)
+					if rect.Empty() {
+						t.Fatalf("%s hit region is empty", tc.name)
+					}
+					if platform.landscape {
+						if rect.Dy() >= rect.Dx() || rect.Min.Y != captionButtonTopDp {
+							t.Fatalf("%s control is %v at y=%d; want landscape control starting at %d", tc.name, rect.Size(), rect.Min.Y, captionButtonTopDp)
+						}
+					} else if rect.Dx() != rect.Dy() || rect.Min.Y+rect.Dy()/2 != 26 {
+						t.Fatalf("%s traffic-light target is %v; want a square centered vertically", tc.name, rect)
+					}
+					center := rect.Min.Add(image.Pt(rect.Dx()/2, rect.Dy()/2))
+					if got := regions.at(center); got != tc.part {
+						t.Fatalf("hit at %v = %v, want %v", center, got, tc.part)
+					}
+				})
 			}
-			if rect.Min.Y != captionButtonTopDp {
-				t.Fatalf("%s control starts at y=%d; want %d", tc.name, rect.Min.Y, captionButtonTopDp)
+			if got := regions.at(image.Pt(600, 20)); got != chromeNone {
+				t.Fatalf("content hit = %v, want chromeNone", got)
 			}
-			center := rect.Min.Add(image.Pt(rect.Dx()/2, rect.Dy()/2))
-			if got := regions.at(center); got != tc.part {
-				t.Fatalf("hit at %v = %v, want %v", center, got, tc.part)
+			if !image.Pt(600, 20).In(regions.Caption) {
+				t.Fatal("caption context-menu region does not cover the title strip")
 			}
 		})
-	}
-	if got := regions.at(image.Pt(600, 20)); got != chromeNone {
-		t.Fatalf("content hit = %v, want chromeNone", got)
-	}
-	if !image.Pt(600, 20).In(regions.Caption) {
-		t.Fatal("caption context-menu region does not cover the title strip")
 	}
 }
 
