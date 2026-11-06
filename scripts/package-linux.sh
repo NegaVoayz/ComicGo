@@ -15,13 +15,15 @@ go test ./...
 go vet ./...
 
 mkdir -p \
+  "$root/build/bin" \
   "$staging/DEBIAN" \
   "$staging/usr/bin" \
   "$staging/usr/share/applications" \
   "$staging/usr/share/icons/hicolor/1024x1024/apps"
 
 go build -trimpath -ldflags="-s -w -X gioui.org/app.ID=io.comicgo.ComicGo" \
-  -o "$staging/usr/bin/comicgo" .
+  -o "$root/build/bin/comicgo" .
+install -m 0755 "$root/build/bin/comicgo" "$staging/usr/bin/comicgo"
 install -m 0644 build/appicon.png \
   "$staging/usr/share/icons/hicolor/1024x1024/apps/comicgo.png"
 
@@ -51,6 +53,5 @@ Categories=Graphics;Viewer;
 StartupWMClass=io.comicgo.ComicGo
 EOF
 
-mkdir -p "$root/build/bin"
 dpkg-deb --root-owner-group --build "$staging" "$output"
 printf 'Created %s\n' "$output"
