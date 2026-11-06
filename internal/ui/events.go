@@ -221,6 +221,8 @@ func (u *UI) handleUIEvent(ev any) {
 		u.Detail.Title = ev.Detail.Meta.Title()
 		u.Detail.Loaded = true
 		screenHooks.RequestHero(u, ev.Id)
+	case AuthorsLoadedEvent:
+		screenHooks.HandleAuthorsLoaded(u, ev)
 	case DetailSavedEvent:
 		u.DialogBusy = false
 		if ev.Err != nil {

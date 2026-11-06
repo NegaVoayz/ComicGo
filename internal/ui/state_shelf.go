@@ -185,6 +185,14 @@ type DetailState struct {
 	AuthorEditor widget.Editor
 	TagsEditor   widget.Editor
 	SourceEditor widget.Editor
+	AuthorMenu   widget.Clickable
+	AuthorClose  widget.Clickable
+	AuthorClicks []widget.Clickable
+	AuthorList   layout.List
+	AuthorOpen   bool
+	AuthorCenter int
+	AuthorAnchor image.Point
+	AuthorValues []string
 	Back         widget.Clickable
 	Edit         widget.Clickable
 	Copy         widget.Clickable
@@ -255,6 +263,12 @@ type DetailSavedEvent struct {
 	Id     int64
 	Detail model.ComicDetail
 	Err    error
+}
+
+type AuthorsLoadedEvent struct {
+	Id      int64
+	Authors []string
+	Err     error
 }
 
 type PageLoadedEvent struct {

@@ -72,6 +72,36 @@ func (s *Store) PathFromID(id int64) (string, error) {
 	return p, err
 }
 
+// AuthorValues returns the distinct, non-empty authors in the index.
+// Matching is case-insensitive so spelling variants do not duplicate options.
+func (s *Store) AuthorValues() ([]string, error) {
+	rows, err := s.db.QueryContext(context.Background(), `
+SELECT TRIM(value)
+FROM comic_meta
+WHERE key='Author' AND TRIM(value) <> ''
+ORDER BY TRIM(value) COLLATE NOCASE, TRIM(value) COLLATE BINARY`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []string
+	seen := map[string]bool{}
+	for rows.Next() {
+		var author string
+		if err := rows.Scan(&author); err != nil {
+			return nil, err
+		}
+		key := strings.ToLower(author)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, author)
+	}
+	return out, rows.Err()
+}
+
 // RowByID loads one row including KV.
 func (s *Store) RowByID(id int64) (*Row, error) {
 	rows, err := s.AllRows()
