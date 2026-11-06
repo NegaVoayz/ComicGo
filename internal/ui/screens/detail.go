@@ -12,7 +12,6 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
-	"gioui.org/widget"
 	"gioui.org/x/outlay"
 )
 
@@ -146,16 +145,6 @@ func (u *Renderer) sourceField(gtx layout.Context, source string) layout.Dimensi
 	)
 }
 
-func (u *Renderer) openMetadataEditor() {
-	m := u.Detail.Detail.Meta
-	u.Detail.NameEditor.SetText(m.Title())
-	u.Detail.AuthorEditor.SetText(m.KV["Author"])
-	u.Detail.TagsEditor.SetText(m.KV["Genre"])
-	u.Detail.SourceEditor.SetText(m.KV["Source"])
-	u.Detail.SaveErr = ""
-	u.Detail.EditOpen = true
-}
-
 func SplitTags(s string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -167,81 +156,4 @@ func SplitTags(s string) []string {
 		}
 	}
 	return out
-}
-
-func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
-	if u.Detail.Cancel.Clicked(gtx) {
-		u.Detail.EditOpen = false
-	}
-	if u.Detail.Save.Clicked(gtx) && !u.DialogBusy {
-		edit := model.MetaEdit{
-			Title:  u.Detail.NameEditor.Text(),
-			Author: u.Detail.AuthorEditor.Text(),
-			Genre:  u.Detail.TagsEditor.Text(),
-			Source: u.Detail.SourceEditor.Text(),
-		}
-		id := u.Detail.Id
-		u.DialogBusy = true
-		go func() {
-			detail, err := u.Backend.UpdateComicMetadata(id, edit)
-			u.Post(DetailSavedEvent{Id: id, Detail: detail, Err: err})
-		}()
-	}
-	layout.Stack{Alignment: layout.Center}.Layout(gtx,
-		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-			paint.Fill(gtx.Ops, colBlack50)
-			return layout.Dimensions{Size: gtx.Constraints.Max}
-		}),
-		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return u.Modal(gtx, unit.Dp(560), func(gtx layout.Context) layout.Dimensions {
-					fields := []struct {
-						label  string
-						editor *widget.Editor
-					}{
-						{"Title", &u.Detail.NameEditor},
-						{"Author", &u.Detail.AuthorEditor},
-						{"Tags (comma-separated)", &u.Detail.TagsEditor},
-						{"Source", &u.Detail.SourceEditor},
-					}
-					children := []layout.FlexChild{
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.LabelColor(gtx, "Edit metadata", unit.Sp(19), colText, 1, font.Bold)
-						}),
-					}
-					for _, field := range fields {
-						field := field
-						children = append(children,
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return u.Label(gtx, field.label, unit.Sp(11), colDim, 1)
-							}),
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return u.Editor(gtx, field.editor, field.label, 36)
-							}),
-						)
-					}
-					if u.Detail.SaveErr != "" {
-						children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return u.Label(gtx, u.Detail.SaveErr, unit.Sp(12), colFav, 2)
-						}))
-					}
-					children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return layout.Flex{Axis: layout.Horizontal, Gap: 8}.Layout(gtx,
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								return u.Button(gtx, &u.Detail.Cancel, "Cancel", ButtonStyle{Disabled: u.DialogBusy})
-							}),
-							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-								label := "Save"
-								if u.DialogBusy {
-									label = "Saving..."
-								}
-								return u.Button(gtx, &u.Detail.Save, label, ButtonStyle{Solid: true, Disabled: u.DialogBusy})
-							}),
-						)
-					}))
-					return layout.Flex{Axis: layout.Vertical, Gap: 7}.Layout(gtx, children...)
-				})
-			})
-		}),
-	)
 }

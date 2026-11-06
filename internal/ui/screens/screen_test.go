@@ -121,3 +121,19 @@ func TestReaderFooterControlsUseExactHitBounds(t *testing.T) {
 		t.Fatalf("segment control size = %v, want 132x32", got.Size)
 	}
 }
+
+func TestAuthorOptionsKeepCurrentValueAndDeduplicate(t *testing.T) {
+	ui := NewUI(nil)
+	ui.Detail.AuthorEditor.SetText(" current ")
+	ui.Detail.AuthorValues = []string{"Alpha", "alpha", "Current", "Beta"}
+	got := renderer(ui).authorOptions()
+	want := []string{"current", "Alpha", "Beta"}
+	if len(got) != len(want) {
+		t.Fatalf("author options = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("author options = %q, want %q", got, want)
+		}
+	}
+}
