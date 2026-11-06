@@ -81,6 +81,7 @@ func (u *UI) dismissToast(id int) {
 }
 
 func (u *UI) layout(gtx layout.Context) {
+	screen := u.Screen
 	paint.Fill(gtx.Ops, colBG)
 	u.Press.EditorHit = false
 	u.FocusedEditor = nil
@@ -118,6 +119,9 @@ func (u *UI) layout(gtx layout.Context) {
 	}
 	u.Chrome.LayoutControls(gtx, gtx.Dp(unit.Dp(captionHeight)))
 	u.trackPointerPress(gtx)
+	if u.Screen != screen {
+		u.Invalidate()
+	}
 }
 
 func (u *UI) trackPointerPress(gtx layout.Context) {
