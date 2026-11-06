@@ -116,7 +116,11 @@ func (u *UI) Editor(gtx layout.Context, editor *widget.Editor, hint string, heig
 		u.FocusedEditor = editor
 	}
 	pass := pointer.PassOp{}.Push(gtx.Ops)
-	area := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
+	hitSize := gtx.Constraints.Max
+	if editor.SingleLine {
+		hitSize.Y = minInt(hitSize.Y, maxInt(gtx.Constraints.Min.Y, gtx.Dp(height)))
+	}
+	area := clip.Rect{Max: hitSize}.Push(gtx.Ops)
 	event.Op(gtx.Ops, &focus.tag)
 	area.Pop()
 	pass.Pop()
