@@ -3,6 +3,7 @@ package screens
 import (
 	"comicgo/internal/model"
 	. "comicgo/internal/ui"
+	"comicgo/internal/ui/metadata"
 	"fmt"
 	"image"
 	"strings"
@@ -149,24 +150,34 @@ func (u *Renderer) sourceField(gtx layout.Context, source string) layout.Dimensi
 }
 
 func SplitTags(s string) []string {
-	var out []string
-	seen := map[string]bool{}
-	for _, part := range strings.FieldsFunc(s, func(r rune) bool {
-		return r == ',' || r == '、' || r == '，'
-	}) {
-		part = strings.TrimSpace(part)
-		key := strings.ToLower(part)
-		if part != "" && !seen[key] {
-			seen[key] = true
-			out = append(out, part)
-		}
-	}
-	return out
+	return metadata.SplitTags(s)
 }
 
 func (u *Renderer) closePicker() {
 	u.Detail.PickerKind = ""
 	u.Detail.AuthorOpen = false
+	u.Detail.PickerSuppressed = true
+}
+
+func (u *Renderer) openPicker(kind string, gtx layout.Context, anchor image.Point) {
+	u.Detail.PickerKind = kind
+	u.Detail.AuthorOpen = true
+	u.Detail.PickerSuppressed = false
+	if anchor.Y == 0 {
+		anchor.Y = gtx.Constraints.Max.Y / 2
+	}
+	u.Detail.PickerAnchor = anchor
+	contentWidth := gtx.Dp(unit.Dp(500))
+	u.Detail.PickerRight = (gtx.Constraints.Max.X + contentWidth) / 2
+	if kind == "tag" {
+		u.Detail.PickerRight -= u.Detail.TagAddWidth + gtx.Dp(unit.Dp(6))
+	}
+}
+
+const metadataPickerColumns = 3
+
+func pickerGridRows(total int) int {
+	return max(1, (total+metadataPickerColumns-1)/metadataPickerColumns)
 }
 
 func (u *Renderer) metadataField(label, hint string, editor *widget.Editor) []layout.FlexChild {
@@ -204,30 +215,29 @@ func (u *Renderer) valueMenuButton(gtx layout.Context, click *widget.Clickable, 
 }
 
 func (u *Renderer) layoutAuthorMenu(gtx layout.Context, options []string) {
+	y := u.Detail.PickerAnchor.Y + gtx.Dp(unit.Dp(18))
+	available := max(gtx.Dp(unit.Dp(30)), gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8))-y)
 	macro := op.Record(gtx.Ops)
-	menuDims := u.layoutAuthorMenuPanel(gtx, options)
+	menuDims := u.layoutAuthorMenuPanel(gtx, options, available)
 	menu := macro.Stop()
 	u.Detail.AuthorClose.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Dimensions{Size: gtx.Constraints.Max}
 	})
-	x := u.Detail.AuthorCenter - menuDims.Size.X/2
-	if u.Detail.AuthorCenter == 0 {
+	x := u.Detail.PickerRight - menuDims.Size.X
+	if u.Detail.PickerRight == 0 {
 		x = (gtx.Constraints.Max.X - menuDims.Size.X) / 2
 	}
 	x = max(gtx.Dp(unit.Dp(8)), min(x, gtx.Constraints.Max.X-menuDims.Size.X-gtx.Dp(unit.Dp(8))))
-	y := u.Detail.AuthorAnchor.Y + gtx.Dp(unit.Dp(18))
-	if y+menuDims.Size.Y > gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8)) {
-		y = u.Detail.AuthorAnchor.Y - menuDims.Size.Y - gtx.Dp(unit.Dp(8))
-	}
 	y = max(gtx.Dp(unit.Dp(8)), y)
 	defer op.Offset(image.Pt(x, y)).Push(gtx.Ops).Pop()
 	menu.Add(gtx.Ops)
 }
 
-func (u *Renderer) layoutAuthorMenuPanel(gtx layout.Context, options []string) layout.Dimensions {
-	width := min(gtx.Dp(unit.Dp(300)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(16)))
+func (u *Renderer) layoutAuthorMenuPanel(gtx layout.Context, options []string, available int) layout.Dimensions {
+	width := min(gtx.Dp(unit.Dp(460)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(16)))
 	rowHeight := gtx.Dp(unit.Dp(30))
-	height := min(gtx.Dp(unit.Dp(240)), max(rowHeight, len(options)*rowHeight))
+	rows := pickerGridRows(len(options))
+	height := min(min(gtx.Dp(unit.Dp(240)), available), max(rowHeight, rows*rowHeight))
 	widthDp := unit.Dp(float32(width) / gtx.Metric.PxPerDp)
 	return u.Panel(gtx, widthDp, func(gtx layout.Context) layout.Dimensions {
 		gtx.Constraints.Min.Y = height
@@ -242,13 +252,24 @@ func (u *Renderer) layoutAuthorMenuPanel(gtx layout.Context, options []string) l
 			})
 		}
 		u.Detail.AuthorList.Axis = layout.Vertical
-		return u.Detail.AuthorList.Layout(gtx, len(options), func(gtx layout.Context, i int) layout.Dimensions {
-			style := ButtonStyle{Plain: true, Centered: true}
-			if u.Detail.PickerKind == "author" && strings.EqualFold(options[i], u.Detail.AuthorEditor.Text()) {
-				style = ButtonStyle{Primary: true, Centered: true}
+		return u.Detail.AuthorList.Layout(gtx, rows, func(gtx layout.Context, row int) layout.Dimensions {
+			children := make([]layout.FlexChild, 0, metadataPickerColumns)
+			for col := 0; col < metadataPickerColumns; col++ {
+				i := row*metadataPickerColumns + col
+				children = append(children, layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					if i >= len(options) {
+						return layout.Dimensions{Size: image.Pt(0, rowHeight)}
+					}
+					style := ButtonStyle{Plain: true, Centered: true}
+					if u.Detail.PickerKind == "author" && strings.EqualFold(options[i], u.Detail.AuthorEditor.Text()) {
+						style = ButtonStyle{Primary: true, Centered: true}
+					}
+					gtx.Constraints.Min.Y = rowHeight
+					gtx.Constraints.Max.Y = rowHeight
+					return u.Button(gtx, &u.Detail.AuthorClicks[i], options[i], style)
+				}))
 			}
-			gtx.Constraints.Min.X = gtx.Constraints.Max.X
-			return u.Button(gtx, &u.Detail.AuthorClicks[i], options[i], style)
+			return layout.Flex{Axis: layout.Horizontal, Gap: 2}.Layout(gtx, children...)
 		})
 	})
 }

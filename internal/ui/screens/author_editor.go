@@ -3,6 +3,7 @@ package screens
 import (
 	"comicgo/internal/model"
 	. "comicgo/internal/ui"
+	"comicgo/internal/ui/metadata"
 	"errors"
 	"strings"
 
@@ -24,6 +25,7 @@ func (u *Renderer) openMetadataEditor() {
 	u.Detail.TagRemove = nil
 	u.Detail.SaveErr = ""
 	u.closePicker()
+	u.Detail.PickerSuppressed = false
 	u.Detail.AuthorValues = nil
 	u.Detail.TagValues = nil
 	u.Detail.AuthorList = layout.List{Axis: layout.Vertical}
@@ -51,61 +53,22 @@ func (u *Renderer) handleAuthorsLoaded(ev AuthorsLoadedEvent) {
 }
 
 func (u *Renderer) authorOptions() []string {
-	options := make([]string, 0, len(u.Detail.AuthorValues)+1)
-	seen := map[string]bool{}
-	add := func(author string) {
-		author = strings.TrimSpace(author)
-		key := strings.ToLower(author)
-		if author == "" || seen[key] {
-			return
-		}
-		seen[key] = true
-		options = append(options, author)
-	}
-	add(u.Detail.AuthorEditor.Text())
-	for _, author := range u.Detail.AuthorValues {
-		add(author)
-	}
-	return options
+	current := u.Detail.AuthorEditor.Text()
+	return metadata.AuthorOptions(u.Detail.AuthorValues, current, current)
 }
 
 func (u *Renderer) tagOptions() []string {
-	selected := make(map[string]bool, len(u.Detail.Tags))
-	for _, tag := range u.Detail.Tags {
-		selected[strings.ToLower(tag)] = true
-	}
-	options := make([]string, 0, len(u.Detail.TagValues))
-	for _, tag := range u.Detail.TagValues {
-		if !selected[strings.ToLower(tag)] {
-			options = append(options, tag)
-		}
-	}
-	return options
+	return metadata.TagOptions(u.Detail.TagValues, u.Detail.Tags, u.Detail.TagsEditor.Text())
 }
 
 func (u *Renderer) addDraftTags(raw string) bool {
-	changed := false
-	seen := make(map[string]bool, len(u.Detail.Tags))
-	for _, tag := range u.Detail.Tags {
-		seen[strings.ToLower(tag)] = true
-	}
-	for _, tag := range SplitTags(raw) {
-		key := strings.ToLower(tag)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		u.Detail.Tags = append(u.Detail.Tags, tag)
-		changed = true
-	}
+	tags, changed := metadata.AddTags(u.Detail.Tags, raw)
+	u.Detail.Tags = tags
 	return changed
 }
 
 func (u *Renderer) removeDraftTag(index int) {
-	if index < 0 || index >= len(u.Detail.Tags) {
-		return
-	}
-	u.Detail.Tags = append(u.Detail.Tags[:index], u.Detail.Tags[index+1:]...)
+	u.Detail.Tags = metadata.RemoveTag(u.Detail.Tags, index)
 }
 
 func (u *Renderer) commitDraftTags() []string {
@@ -117,6 +80,19 @@ func (u *Renderer) commitDraftTags() []string {
 }
 
 func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
+	authorFocused := gtx.Focused(&u.Detail.AuthorEditor)
+	tagFocused := gtx.Focused(&u.Detail.TagsEditor)
+	if !authorFocused && !tagFocused {
+		u.Detail.PickerSuppressed = false
+	}
+	if !u.Detail.PickerSuppressed {
+		switch {
+		case authorFocused && (u.Detail.PickerKind != "author" || !u.Detail.AuthorOpen):
+			u.openPicker("author", gtx, u.Detail.PickerAnchor)
+		case tagFocused && (u.Detail.PickerKind != "tag" || !u.Detail.AuthorOpen):
+			u.openPicker("tag", gtx, u.Detail.PickerAnchor)
+		}
+	}
 	if u.Detail.Cancel.Clicked(gtx) {
 		u.Detail.EditOpen = false
 		u.closePicker()
@@ -171,18 +147,18 @@ func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
 		u.Invalidate()
 	}
 	if u.Detail.AuthorMenu.Clicked(gtx) {
-		u.Detail.PickerKind = "author"
-		u.Detail.AuthorOpen = true
-		u.Detail.AuthorCenter = u.pressedControlCenter(&u.Detail.AuthorMenu, gtx.Dp(unit.Dp(38)))
-		u.Detail.AuthorAnchor = u.Press.Position
-		u.Invalidate()
+		if u.Detail.PickerKind == "author" && u.Detail.AuthorOpen {
+			u.closePicker()
+		} else {
+			u.openPicker("author", gtx, u.Press.Position)
+		}
 	}
 	if u.Detail.TagMenu.Clicked(gtx) {
-		u.Detail.PickerKind = "tag"
-		u.Detail.AuthorOpen = true
-		u.Detail.AuthorCenter = u.pressedControlCenter(&u.Detail.TagMenu, gtx.Dp(unit.Dp(38)))
-		u.Detail.AuthorAnchor = u.Press.Position
-		u.Invalidate()
+		if u.Detail.PickerKind == "tag" && u.Detail.AuthorOpen {
+			u.closePicker()
+		} else {
+			u.openPicker("tag", gtx, u.Press.Position)
+		}
 	}
 
 	children := []layout.FlexChild{
@@ -284,10 +260,12 @@ func (u *Renderer) layoutTagsSelector(gtx layout.Context) layout.Dimensions {
 				return u.Editor(gtx, &u.Detail.TagsEditor, "Add a tag...", 36)
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.Button(gtx, &u.Detail.TagAdd, "Add", ButtonStyle{Disabled: strings.TrimSpace(u.Detail.TagsEditor.Text()) == ""})
+				return u.valueMenuButton(gtx, &u.Detail.TagMenu, u.Detail.PickerKind == "tag")
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return u.valueMenuButton(gtx, &u.Detail.TagMenu, u.Detail.PickerKind == "tag")
+				dims := u.Button(gtx, &u.Detail.TagAdd, "Add", ButtonStyle{Disabled: strings.TrimSpace(u.Detail.TagsEditor.Text()) == ""})
+				u.Detail.TagAddWidth = dims.Size.X
+				return dims
 			}),
 		)
 	}))

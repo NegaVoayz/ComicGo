@@ -127,7 +127,13 @@ func (u *UI) Editor(gtx layout.Context, editor *widget.Editor, hint string, heig
 		}
 		if press, ok := ev.(pointer.Event); ok && press.Kind == pointer.Press {
 			u.Press.EditorHit = true
+			u.Press.EditorPosition = press.Position.Round()
+			if editor == &u.Detail.AuthorEditor || editor == &u.Detail.TagsEditor {
+				u.Detail.PickerAnchor = u.Press.EditorPosition
+				u.Detail.PickerSuppressed = false
+			}
 			gtx.Execute(key.FocusCmd{Tag: editor})
+			u.Invalidate()
 		}
 	}
 	return layout.Stack{}.Layout(gtx,

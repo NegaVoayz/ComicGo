@@ -5,6 +5,7 @@ import (
 	. "comicgo/internal/ui"
 
 	"image"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,6 +18,31 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 )
+
+func clickHovered(t *testing.T, router *input.Router, ops *op.Ops, frame func(), bounds image.Rectangle, step int, hovered func() bool) {
+	t.Helper()
+	frame()
+	var position f32.Point
+	for y := bounds.Min.Y; y < bounds.Max.Y && position == (f32.Point{}); y += step {
+		for x := bounds.Min.X; x < bounds.Max.X; x += step {
+			probe := f32.Pt(float32(x), float32(y))
+			router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: probe})
+			frame()
+			if hovered() {
+				position = probe
+				break
+			}
+		}
+	}
+	if position == (f32.Point{}) {
+		t.Fatal("could not locate hover target")
+	}
+	router.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1, Buttons: pointer.ButtonPrimary, Position: position})
+	frame()
+	router.Queue(pointer.Event{Kind: pointer.Release, Source: pointer.Mouse, PointerID: 1, Position: position})
+	frame()
+	frame()
+}
 
 func TestTagQueryEscaping(t *testing.T) {
 	u := renderer(&UI{
@@ -128,19 +154,61 @@ func TestReaderFooterControlsUseExactHitBounds(t *testing.T) {
 	}
 }
 
-func TestAuthorOptionsKeepCurrentValueAndDeduplicate(t *testing.T) {
+func TestAuthorOptionsFilterAndDeduplicateTypedValue(t *testing.T) {
 	ui := NewUI(nil)
 	ui.Detail.AuthorEditor.SetText(" current ")
 	ui.Detail.AuthorValues = []string{"Alpha", "alpha", "Current", "Beta"}
 	got := renderer(ui).authorOptions()
-	want := []string{"current", "Alpha", "Beta"}
-	if len(got) != len(want) {
+	want := []string{"current"}
+	if !slices.Equal(got, want) {
 		t.Fatalf("author options = %q, want %q", got, want)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("author options = %q, want %q", got, want)
+}
+
+func TestTagOptionsFilterTypedValueAndExcludeSelected(t *testing.T) {
+	ui := NewUI(nil)
+	ui.Detail.TagsEditor.SetText("be")
+	ui.Detail.Tags = []string{"Beta"}
+	ui.Detail.TagValues = []string{"Alpha", "Beta", "Better", "Comedy"}
+	got := renderer(ui).tagOptions()
+	if strings.Join(got, "|") != "Better" {
+		t.Fatalf("tag options = %q, want Better", got)
+	}
+}
+
+func TestMetadataPickerUsesThreeColumns(t *testing.T) {
+	if got := pickerGridRows(7); got != 3 {
+		t.Fatalf("picker rows for 7 values = %d, want 3", got)
+	}
+}
+
+func TestMetadataPickerOpensForFocusedEditor(t *testing.T) {
+	ui := NewUI(nil)
+	ui.Detail.EditOpen = true
+	router := new(input.Router)
+	ops := new(op.Ops)
+	frame := func(focus *widget.Editor) {
+		gtx := layout.Context{
+			Ops: ops, Source: router.Source(),
+			Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Exact(image.Pt(1200, 820)),
 		}
+		if focus != nil {
+			gtx.Execute(key.FocusCmd{Tag: focus})
+		}
+		renderer(ui).layoutMetadataEditor(gtx)
+		router.Frame(ops)
+		ops.Reset()
+	}
+	frame(&ui.Detail.AuthorEditor)
+	frame(nil)
+	if !ui.Detail.AuthorOpen || ui.Detail.PickerKind != "author" {
+		t.Fatalf("author focus opened picker %q (open=%v)", ui.Detail.PickerKind, ui.Detail.AuthorOpen)
+	}
+	frame(&ui.Detail.TagsEditor)
+	frame(nil)
+	if !ui.Detail.AuthorOpen || ui.Detail.PickerKind != "tag" || ui.Detail.PickerRight >= 850 {
+		t.Fatalf("tag focus opened picker %q (open=%v)", ui.Detail.PickerKind, ui.Detail.AuthorOpen)
 	}
 }
 
@@ -163,27 +231,7 @@ func TestAuthorChipFiltersInsteadOfOpeningDetail(t *testing.T) {
 		router.Frame(ops)
 		ops.Reset()
 	}
-	frame()
-	var position f32.Point
-	for y := 270; y < 342 && position == (f32.Point{}); y += 2 {
-		for x := 0; x < 200; x += 2 {
-			probe := f32.Pt(float32(x), float32(y))
-			router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: probe})
-			frame()
-			if card.AuthorClick.Hovered() {
-				position = probe
-				break
-			}
-		}
-	}
-	if position == (f32.Point{}) {
-		t.Fatal("could not locate author chip")
-	}
-	router.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1, Buttons: pointer.ButtonPrimary, Position: position})
-	frame()
-	router.Queue(pointer.Event{Kind: pointer.Release, Source: pointer.Mouse, PointerID: 1, Position: position})
-	frame()
-	frame()
+	clickHovered(t, router, ops, frame, image.Rect(0, 270, 200, 342), 2, card.AuthorClick.Hovered)
 	if len(ui.Authors) != 1 || ui.Authors[0] != "Artist" {
 		t.Fatalf("author filters = %q, want Artist", ui.Authors)
 	}
@@ -200,13 +248,8 @@ func TestMetadataTagsAddRemoveAndDeduplicate(t *testing.T) {
 		t.Fatal("new tags were not added")
 	}
 	want := []string{"Alpha", "Beta", "Gamma"}
-	if len(ui.Detail.Tags) != len(want) {
+	if !slices.Equal(ui.Detail.Tags, want) {
 		t.Fatalf("tags = %q, want %q", ui.Detail.Tags, want)
-	}
-	for i := range want {
-		if ui.Detail.Tags[i] != want[i] {
-			t.Fatalf("tags = %q, want %q", ui.Detail.Tags, want)
-		}
 	}
 	r.removeDraftTag(1)
 	if strings.Join(ui.Detail.Tags, "|") != "Alpha|Gamma" {
@@ -243,27 +286,7 @@ func TestDetailAuthorChipFiltersInsteadOfStayingOnDetail(t *testing.T) {
 		router.Frame(ops)
 		ops.Reset()
 	}
-	frame()
-	var position f32.Point
-	for y := 80; y < 600 && position == (f32.Point{}); y += 4 {
-		for x := 560; x < 1100; x += 4 {
-			probe := f32.Pt(float32(x), float32(y))
-			router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: probe})
-			frame()
-			if ui.Detail.AuthorClick.Hovered() {
-				position = probe
-				break
-			}
-		}
-	}
-	if position == (f32.Point{}) {
-		t.Fatal("could not locate detail author chip")
-	}
-	router.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1, Buttons: pointer.ButtonPrimary, Position: position})
-	frame()
-	router.Queue(pointer.Event{Kind: pointer.Release, Source: pointer.Mouse, PointerID: 1, Position: position})
-	frame()
-	frame()
+	clickHovered(t, router, ops, frame, image.Rect(560, 80, 1100, 600), 4, ui.Detail.AuthorClick.Hovered)
 	if strings.Join(ui.Authors, "|") != "Tanaka Yoshi" {
 		t.Fatalf("author filters = %q, want Tanaka Yoshi", ui.Authors)
 	}

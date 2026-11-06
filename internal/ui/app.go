@@ -111,10 +111,11 @@ type UI struct {
 	Screen ScreenMode
 	Fatal  error
 	Press  struct {
-		Tag       struct{}
-		Position  image.Point
-		HasOrigin bool
-		EditorHit bool
+		Tag            struct{}
+		Position       image.Point
+		EditorPosition image.Point
+		HasOrigin      bool
+		EditorHit      bool
 	}
 	EditorFocus   map[*widget.Editor]*editorFocusState
 	FocusedEditor *widget.Editor

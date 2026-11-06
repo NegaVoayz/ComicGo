@@ -198,6 +198,8 @@ func (u *UI) HandleKey(ev key.Event) {
 			u.CloseReader()
 		case u.Detail.AuthorOpen:
 			u.Detail.AuthorOpen = false
+			u.Detail.PickerKind = ""
+			u.Detail.PickerSuppressed = true
 			u.Invalidate()
 		case u.Detail.EditOpen:
 			u.Detail.EditOpen = false
