@@ -4,6 +4,7 @@ import (
 	"comicgo/internal/imgutil"
 	"comicgo/internal/model"
 	. "comicgo/internal/ui"
+	"comicgo/internal/ui/metadata"
 	"comicgo/internal/ui/windowing"
 	"image"
 	"strings"
@@ -15,6 +16,15 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 )
+
+func (u *Renderer) authorOptions() []string {
+	current := u.Detail.AuthorEditor.Text()
+	return metadata.AuthorOptions(u.Detail.AuthorValues, current, current)
+}
+
+func (u *Renderer) tagOptions() []string {
+	return metadata.TagOptions(u.Detail.TagValues, u.Detail.Tags, u.Detail.TagsEditor.Text())
+}
 
 func (u *Renderer) openDetail(card model.ComicCard) {
 	u.Detail = DetailState{

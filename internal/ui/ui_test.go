@@ -275,3 +275,24 @@ func TestEditorClickPastTextMovesCaretToEnd(t *testing.T) {
 		t.Fatalf("caret column = %d after right-side click, want 3", col)
 	}
 }
+
+func TestPointerShieldBlocksUnderlyingHover(t *testing.T) {
+	u := NewUI(nil)
+	router, ops := new(input.Router), new(op.Ops)
+	var under, shield widget.Clickable
+	frame := func() {
+		gtx := layout.Context{Ops: ops, Source: router.Source(), Constraints: layout.Exact(image.Pt(100, 100))}
+		under.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Dimensions{Size: gtx.Constraints.Max}
+		})
+		u.BlockPointer(gtx, &shield)
+		router.Frame(ops)
+		ops.Reset()
+	}
+	frame()
+	router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: f32.Pt(50, 50)})
+	frame()
+	if under.Hovered() {
+		t.Fatal("pointer shield allowed hover to reach the underlying control")
+	}
+}

@@ -171,6 +171,7 @@ type DetailState struct {
 	TagRemove        []widget.Clickable
 	TagAdd           widget.Clickable
 	TagAddWidth      int
+	ModalShield      widget.Clickable
 	PickerKind       string
 	Back             widget.Clickable
 	Edit             widget.Clickable

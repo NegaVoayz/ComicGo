@@ -54,15 +54,6 @@ func (u *Renderer) handleAuthorsLoaded(ev AuthorsLoadedEvent) {
 	u.Detail.TagValues = append(u.Detail.TagValues[:0], ev.Tags...)
 }
 
-func (u *Renderer) authorOptions() []string {
-	current := u.Detail.AuthorEditor.Text()
-	return metadata.AuthorOptions(u.Detail.AuthorValues, current, current)
-}
-
-func (u *Renderer) tagOptions() []string {
-	return metadata.TagOptions(u.Detail.TagValues, u.Detail.Tags, u.Detail.TagsEditor.Text())
-}
-
 func (u *Renderer) addDraftTags(raw string) bool {
 	tags, changed := metadata.AddTags(u.Detail.Tags, raw)
 	u.Detail.Tags = tags
@@ -165,6 +156,7 @@ func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
 	}
 
 	paint.Fill(gtx.Ops, colBlack50)
+	u.BlockPointer(gtx, &u.Detail.ModalShield)
 	var authorBottom, tagBottom int
 	modalGtx := gtx
 	modalGtx.Constraints.Min = image.Point{}

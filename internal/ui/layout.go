@@ -70,6 +70,12 @@ func (u *UI) Invalidate() {
 	}
 }
 
+func (u *UI) BlockPointer(gtx layout.Context, click *widget.Clickable) layout.Dimensions {
+	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: gtx.Constraints.Max}
+	})
+}
+
 func (u *UI) dismissToast(id int) {
 	out := u.Toasts[:0]
 	for _, t := range u.Toasts {
