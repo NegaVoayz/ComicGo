@@ -175,8 +175,9 @@ func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
 	modal := macro.Stop()
 	x := (gtx.Constraints.Max.X - modalDims.Size.X) / 2
 	y := (gtx.Constraints.Max.Y - modalDims.Size.Y) / 2
-	op.Offset(image.Pt(x, y)).Add(gtx.Ops)
+	modalOffset := op.Offset(image.Pt(x, y)).Push(gtx.Ops)
 	modal.Add(gtx.Ops)
+	modalOffset.Pop()
 	contentTop := y + gtx.Dp(unit.Dp(metadataFormTopOffset))
 	u.Detail.PickerRight = (gtx.Constraints.Max.X + gtx.Dp(unit.Dp(metadataContentWidth))) / 2
 	switch u.Detail.PickerKind {

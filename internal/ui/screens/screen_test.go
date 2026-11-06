@@ -163,6 +163,7 @@ func TestMetadataPickerUsesThreeColumns(t *testing.T) {
 func TestMetadataPickerOpensForFocusedEditor(t *testing.T) {
 	ui := NewUI(nil)
 	ui.Detail.EditOpen = true
+	ui.Detail.AuthorValues = []string{"Alpha", "Beta"}
 	router := new(input.Router)
 	ops := new(op.Ops)
 	frame := func(focus *widget.Editor) {
@@ -183,6 +184,11 @@ func TestMetadataPickerOpensForFocusedEditor(t *testing.T) {
 	authorY := ui.Detail.PickerY
 	if !ui.Detail.AuthorOpen || ui.Detail.PickerKind != "author" || authorY < 200 {
 		t.Fatalf("author focus opened picker %q (open=%v, y=%d)", ui.Detail.PickerKind, ui.Detail.AuthorOpen, authorY)
+	}
+	router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: f32.Pt(420, 435)})
+	frame(nil)
+	if !ui.Detail.AuthorClicks[0].Hovered() {
+		t.Fatal("author picker was not anchored immediately below its expand button")
 	}
 	frame(&ui.Detail.TagsEditor)
 	frame(nil)
