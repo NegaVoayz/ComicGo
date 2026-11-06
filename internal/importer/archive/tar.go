@@ -1,4 +1,4 @@
-package importer
+package archive
 
 import (
 	"archive/tar"
@@ -88,9 +88,9 @@ func scanTar(path string, gz bool, fn func(*tar.Header)) error {
 	}
 }
 
-func (s *tarSrc) total() int { return s.count }
+func (s *tarSrc) Total() int { return s.count }
 
-func (s *tarSrc) next() (*page, error) {
+func (s *tarSrc) Next() (*Page, error) {
 	for {
 		hdr, err := s.tr.Next()
 		if err != nil { // io.EOF included
@@ -105,9 +105,9 @@ func (s *tarSrc) next() (*page, error) {
 		}
 		rank := q.pop()
 		size := hdr.Size
-		return &page{
-			entry: entryName(rank, filepath.Ext(hdr.Name)),
-			open: func() (io.ReadCloser, error) {
+		return &Page{
+			Entry: EntryName(rank, filepath.Ext(hdr.Name)),
+			Open: func() (io.ReadCloser, error) {
 				// Bound this page to exactly its tar body so io.Copy stops at
 				// the entry end and the next Next() starts at the next header.
 				return io.NopCloser(io.LimitReader(s.tr, size)), nil
@@ -116,7 +116,7 @@ func (s *tarSrc) next() (*page, error) {
 	}
 }
 
-func (s *tarSrc) close() error {
+func (s *tarSrc) Close() error {
 	var err error
 	if s.gr != nil {
 		err = s.gr.Close()

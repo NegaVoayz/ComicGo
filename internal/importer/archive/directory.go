@@ -1,4 +1,4 @@
-package importer
+package archive
 
 import (
 	"io"
@@ -46,9 +46,9 @@ func openDir(root string) (*dirSrc, error) {
 	return &dirSrc{root: root, names: names}, nil
 }
 
-func (s *dirSrc) total() int { return len(s.names) }
+func (s *dirSrc) Total() int { return len(s.names) }
 
-func (s *dirSrc) next() (*page, error) {
+func (s *dirSrc) Next() (*Page, error) {
 	if s.i >= len(s.names) {
 		return nil, io.EOF
 	}
@@ -56,12 +56,12 @@ func (s *dirSrc) next() (*page, error) {
 	s.i++
 	rank := s.i
 	abs := filepath.Join(s.root, rel)
-	return &page{
-		entry: entryName(rank, filepath.Ext(rel)),
-		open: func() (io.ReadCloser, error) {
+	return &Page{
+		Entry: EntryName(rank, filepath.Ext(rel)),
+		Open: func() (io.ReadCloser, error) {
 			return os.Open(abs)
 		},
 	}, nil
 }
 
-func (s *dirSrc) close() error { return nil }
+func (s *dirSrc) Close() error { return nil }

@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-
-	"comicgo/internal/comic"
 )
 
 // archiveSuffixes lists known archive extensions, longest first, so DesiredName
@@ -75,42 +72,4 @@ func UniqueDest(dir, base string) string {
 			return cand
 		}
 	}
-}
-
-// entryName is the destination zip name for page rank (1-based): a six-digit,
-// zero-padded number plus the image's lowercased extension, so natural sort
-// order equals rank order for any reader.
-func entryName(rank int, ext string) string {
-	return fmt.Sprintf("%06d%s", rank, strings.ToLower(ext))
-}
-
-// intQueue is a FIFO of ranks used to assign ranks to duplicate page names.
-type intQueue struct{ items []int }
-
-func (q *intQueue) push(v int) { q.items = append(q.items, v) }
-
-func (q *intQueue) pop() int {
-	v := q.items[0]
-	q.items = q.items[1:]
-	return v
-}
-
-// rankQueues sorts names naturally and returns, for each name, the queue of
-// page ranks assigned to its occurrences (rank 1 = first page). Unique names
-// get exactly one rank = their position in the natural order; a name repeated
-// in the source consumes consecutive ranks, mirroring how comic.Open keeps
-// duplicate entries adjacent.
-func rankQueues(names []string) map[string]*intQueue {
-	sorted := append([]string(nil), names...)
-	sort.SliceStable(sorted, func(i, j int) bool { return comic.NaturalLess(sorted[i], sorted[j]) })
-	m := make(map[string]*intQueue, len(sorted))
-	for i, n := range sorted {
-		q := m[n]
-		if q == nil {
-			q = &intQueue{}
-			m[n] = q
-		}
-		q.push(i + 1)
-	}
-	return m
 }

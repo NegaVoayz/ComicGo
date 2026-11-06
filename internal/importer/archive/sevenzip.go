@@ -1,4 +1,4 @@
-package importer
+package archive
 
 import (
 	"io"
@@ -14,14 +14,14 @@ import (
 // read in archive order in one forward pass: sevenzip caches each folder's
 // decompressor across reads, which keeps solid archives linear rather than
 // quadratic.
-type szSrc struct {
+type sevenZipSource struct {
 	rc    *sevenzip.ReadCloser
 	files []*sevenzip.File // image entries, archive order
 	rank  map[string]*intQueue
 	i     int
 }
 
-func open7z(path string) (*szSrc, error) {
+func openSevenZip(path string) (*sevenZipSource, error) {
 	rc, err := sevenzip.OpenReader(path)
 	if err != nil {
 		return nil, err
@@ -35,12 +35,12 @@ func open7z(path string) (*szSrc, error) {
 		files = append(files, f)
 		names = append(names, f.Name)
 	}
-	return &szSrc{rc: rc, files: files, rank: rankQueues(names)}, nil
+	return &sevenZipSource{rc: rc, files: files, rank: rankQueues(names)}, nil
 }
 
-func (s *szSrc) total() int { return len(s.files) }
+func (s *sevenZipSource) Total() int { return len(s.files) }
 
-func (s *szSrc) next() (*page, error) {
+func (s *sevenZipSource) Next() (*Page, error) {
 	if s.i >= len(s.files) {
 		return nil, io.EOF
 	}
@@ -48,13 +48,13 @@ func (s *szSrc) next() (*page, error) {
 	s.i++
 	rank := s.rank[f.Name].pop()
 	f7 := f
-	return &page{
-		entry: entryName(rank, filepath.Ext(f.Name)),
-		open:  f7.Open,
+	return &Page{
+		Entry: EntryName(rank, filepath.Ext(f.Name)),
+		Open:  f7.Open,
 	}, nil
 }
 
-func (s *szSrc) close() error {
+func (s *sevenZipSource) Close() error {
 	if s.rc == nil {
 		return nil
 	}

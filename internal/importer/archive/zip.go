@@ -1,4 +1,4 @@
-package importer
+package archive
 
 import (
 	"archive/zip"
@@ -33,22 +33,22 @@ func openZip(path string) (*zipSrc, error) {
 	return &zipSrc{rc: rc, files: files}, nil
 }
 
-func (s *zipSrc) total() int { return len(s.files) }
+func (s *zipSrc) Total() int { return len(s.files) }
 
-func (s *zipSrc) next() (*page, error) {
+func (s *zipSrc) Next() (*Page, error) {
 	if s.i >= len(s.files) {
 		return nil, io.EOF
 	}
 	f := s.files[s.i]
 	s.i++
 	rank := s.i
-	return &page{
-		entry: entryName(rank, filepath.Ext(f.Name)),
-		open:  f.Open,
+	return &Page{
+		Entry: EntryName(rank, filepath.Ext(f.Name)),
+		Open:  f.Open,
 	}, nil
 }
 
-func (s *zipSrc) close() error {
+func (s *zipSrc) Close() error {
 	if s.rc == nil {
 		return nil
 	}

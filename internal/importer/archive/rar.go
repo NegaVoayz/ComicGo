@@ -1,4 +1,4 @@
-package importer
+package archive
 
 import (
 	"io"
@@ -28,9 +28,9 @@ func openRar(path string) (*rarSrc, error) {
 	return &rarSrc{rc: rc}, nil
 }
 
-func (s *rarSrc) total() int { return 0 }
+func (s *rarSrc) Total() int { return 0 }
 
-func (s *rarSrc) next() (*page, error) {
+func (s *rarSrc) Next() (*Page, error) {
 	for {
 		hdr, err := s.rc.Next()
 		if err != nil { // io.EOF included
@@ -42,9 +42,9 @@ func (s *rarSrc) next() (*page, error) {
 		s.n++
 		rank := s.n
 		r := s.rc
-		return &page{
-			entry: entryName(rank, filepath.Ext(hdr.Name)),
-			open: func() (io.ReadCloser, error) {
+		return &Page{
+			Entry: EntryName(rank, filepath.Ext(hdr.Name)),
+			Open: func() (io.ReadCloser, error) {
 				// The rardecode reader is bounded to the current file's size
 				// and returns io.EOF at its end; io.Copy then naturally
 				// advances us to the next entry for the following Next().
@@ -54,7 +54,7 @@ func (s *rarSrc) next() (*page, error) {
 	}
 }
 
-func (s *rarSrc) close() error {
+func (s *rarSrc) Close() error {
 	if s.rc == nil {
 		return nil
 	}

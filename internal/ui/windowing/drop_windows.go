@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package windowing
 
 import (
 	"log"
@@ -75,7 +75,7 @@ type winDropTarget struct {
 	vtbl   *dropTargetVtbl
 	refs   int32
 	over   int32
-	ui     *appUI
+	post   func(any)
 	pinner runtime.Pinner
 }
 
@@ -153,13 +153,13 @@ func hasFileDrop(dataObject uintptr) bool {
 }
 
 func setDropState(target *winDropTarget, over bool) {
-	if target != nil && target.ui != nil {
+	if target != nil && target.post != nil {
 		value := int32(0)
 		if over {
 			value = 1
 		}
 		if atomic.SwapInt32(&target.over, value) != value {
-			target.ui.post(dropStateEvent{over: over})
+			target.post(DropStateEvent{Over: over})
 		}
 	}
 }
@@ -217,10 +217,10 @@ func dropFiles(this, dataObject, keyState, point, effect uintptr) uintptr {
 	}
 	defer procReleaseStgMedium.Call(uintptrFromPointer(unsafe.Pointer(&medium)))
 	paths := queryDroppedFiles(medium.Handle)
-	if target != nil && target.ui != nil {
-		target.ui.post(dropStateEvent{over: false})
+	if target != nil && target.post != nil {
+		target.post(DropStateEvent{Over: false})
 		if len(paths) > 0 {
-			target.ui.post(filesDroppedEvent{paths: paths})
+			target.post(FilesDroppedEvent{Paths: paths})
 		}
 	}
 	if effect != 0 {
@@ -260,7 +260,7 @@ func attachWindowsDrop(backend *windowsWindowChromeBackend, hwnd uintptr) {
 		return
 	}
 	backend.oleInitialized = true
-	target := &winDropTarget{vtbl: &winDropVtbl, refs: 1, ui: backend.ui}
+	target := &winDropTarget{vtbl: &winDropVtbl, refs: 1, post: backend.post}
 	target.pinner.Pin(target)
 	backend.dropTarget = target
 	backend.dropHWND = hwnd

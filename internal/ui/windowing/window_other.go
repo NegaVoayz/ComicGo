@@ -1,10 +1,10 @@
 //go:build !windows
 
-package main
+package windowing
 
 type portableWindowChromeBackend struct{}
 
-func newWindowChromeBackend(_ *appUI) windowChromeBackend {
+func newWindowChromeBackend(_ func(any)) windowChromeBackend {
 	return portableWindowChromeBackend{}
 }
 

@@ -1,5 +1,6 @@
-# Normalize text files to LF in the repository; check out per platform.
-* text=auto
+# Normalize text files to LF in the repository and working tree. The checkout
+# is shared with WSL, so explicit LF avoids platform-dependent checkout churn.
+* text=auto eol=lf
 
 *.png binary
 *.jpg binary

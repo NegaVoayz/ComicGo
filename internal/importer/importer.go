@@ -18,10 +18,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"comicgo/internal/comic"
+	"comicgo/internal/importer/archive"
 )
 
 // Options configures one conversion.
@@ -44,60 +43,18 @@ func Import(ctx context.Context, o Options) (int, error) {
 	if o.Source == "" || o.Dest == "" {
 		return 0, errors.New("importer: Source and Dest are required")
 	}
-	src, err := openSource(o.Source)
+	src, err := archive.Open(o.Source)
 	if err != nil {
 		return 0, err
 	}
-	defer src.close()
+	defer src.Close()
 	return writePages(ctx, src, o.Dest, o.Comment, o.OnProgress)
-}
-
-// page is one image to write into the destination archive. open is called only
-// when the writer is ready to stream that page's bytes (so sequential sources
-// such as tar/rar stay positioned correctly between pages).
-type page struct {
-	entry string // destination zip entry name
-	open  func() (io.ReadCloser, error)
-}
-
-// source yields image pages in write order. Because every entry name is a rank,
-// the write order never affects the final reader order — it only constrains how
-// much the source must buffer. Sources that can list cheaply pre-sort; sources
-// that must stream (rar) yield in archive order.
-type source interface {
-	next() (*page, error) // returns (nil, io.EOF) when exhausted
-	total() int           // page count if known up front, else 0
-	close() error
-}
-
-// openSource dispatches to a page source based on what Source is: an image
-// folder, or a supported archive extension.
-func openSource(path string) (source, error) {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if fi.IsDir() {
-		return openDir(path)
-	}
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".zip", ".cbz":
-		return openZip(path)
-	case ".rar", ".cbr":
-		return openRar(path)
-	case ".7z", ".cb7":
-		return open7z(path)
-	case ".tar", ".gz", ".tgz":
-		// ".gz" and ".tgz" are gzip'd tar streams.
-		return openTar(path, strings.EqualFold(filepath.Ext(path), ".gz") || strings.EqualFold(filepath.Ext(path), ".tgz"))
-	}
-	return nil, fmt.Errorf("unsupported source %q: not a comic archive or image folder", path)
 }
 
 // writePages streams every page of src into a new Store-method zip at dest,
 // then verifies the result opens with comic.Open and holds the written count.
 // On failure the partial dest is removed.
-func writePages(ctx context.Context, src source, dest, comment string, onProgress func(int, int)) (int, error) {
+func writePages(ctx context.Context, src archive.Source, dest, comment string, onProgress func(int, int)) (int, error) {
 	f, err := os.Create(dest)
 	if err != nil {
 		return 0, err
@@ -116,33 +73,33 @@ func writePages(ctx context.Context, src source, dest, comment string, onProgres
 		if err := ctx.Err(); err != nil {
 			return fail(err)
 		}
-		p, err := src.next()
+		p, err := src.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return fail(fmt.Errorf("read source page %d: %w", written+1, err))
 		}
-		hdr := &zip.FileHeader{Name: p.entry, Method: zip.Store}
+		hdr := &zip.FileHeader{Name: p.Entry, Method: zip.Store}
 		w, err := zw.CreateHeader(hdr)
 		if err != nil {
-			return fail(fmt.Errorf("create zip entry %s: %w", p.entry, err))
+			return fail(fmt.Errorf("create zip entry %s: %w", p.Entry, err))
 		}
-		rc, err := p.open()
+		rc, err := p.Open()
 		if err != nil {
-			return fail(fmt.Errorf("open source page %d (%s): %w", written+1, p.entry, err))
+			return fail(fmt.Errorf("open source page %d (%s): %w", written+1, p.Entry, err))
 		}
 		_, cpErr := io.Copy(w, rc)
 		clErr := rc.Close()
 		if cpErr != nil {
-			return fail(fmt.Errorf("copy source page %d (%s): %w", written+1, p.entry, cpErr))
+			return fail(fmt.Errorf("copy source page %d (%s): %w", written+1, p.Entry, cpErr))
 		}
 		if clErr != nil {
-			return fail(fmt.Errorf("close source page %d (%s): %w", written+1, p.entry, clErr))
+			return fail(fmt.Errorf("close source page %d (%s): %w", written+1, p.Entry, clErr))
 		}
 		written++
 		if onProgress != nil {
-			onProgress(written, src.total())
+			onProgress(written, src.Total())
 		}
 	}
 	if written == 0 {

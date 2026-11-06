@@ -1,11 +1,10 @@
-package main
+package windowing
 
 import (
 	"image"
 	"image/color"
 	"runtime"
 
-	"gioui.org/app"
 	"gioui.org/f32"
 	"gioui.org/io/system"
 	"gioui.org/layout"
@@ -13,203 +12,28 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
-	"gioui.org/widget"
+
+	"comicgo/internal/ui/style"
 )
 
-const (
-	captionButtonWidthDp  = 56
-	captionButtonHeightDp = 40
-	captionButtonTopDp    = 2
-	macCaptionAreaDp      = 74
-)
-
-type chromePart uint8
-
-const (
-	chromeNone chromePart = iota
-	chromeMinimize
-	chromeMaximize
-	chromeClose
-)
-
-type chromeHitRegions struct {
-	Minimize image.Rectangle
-	Maximize image.Rectangle
-	Close    image.Rectangle
-	Caption  image.Rectangle
-}
-
-type windowChromeState struct {
-	decorations    widget.Decorations
-	mode           app.WindowMode
-	restoreMode    app.WindowMode
-	restorePending bool
-	metric         unit.Metric
-	windowedSize   image.Point
-	maximized      bool
-	focused        bool
-	hover          chromePart
-	regions        chromeHitRegions
-	lastAction     system.Action
-}
-
-type windowChromeBackend interface {
-	handlePlatformEvent(ev any) bool
-	setCaptionRegions(chromeHitRegions)
-	close()
-}
-
-type chromeActionEvent struct {
-	part chromePart
-}
-
-type chromeHoverEvent struct {
-	part chromePart
-}
-
-func captionHitRegions(width, height, scale int) chromeHitRegions {
-	if scale < 1 {
-		scale = 1
-	}
-	caption := image.Rect(0, 0, width, height)
-	if runtime.GOOS == "darwin" {
-		cy := height / 2
-		d := 12 * scale
-		top, bottom := cy-d, cy+d
-		return chromeHitRegions{
-			Close:    image.Rect(8*scale, top, 32*scale, bottom),
-			Minimize: image.Rect(30*scale, top, 54*scale, bottom),
-			Maximize: image.Rect(52*scale, top, 76*scale, bottom),
-			Caption:  caption,
-		}
-	}
-	right := width
-	button := captionButtonWidthDp * scale
-	buttonHeight := captionButtonHeightDp * scale
-	top := captionButtonTopDp * scale
-	bottom := minInt(height, buttonHeight)
-	maximize := image.Rect(right-2*button, top, right-button, bottom)
-	close := image.Rect(right-button, top, right, bottom)
-	minimize := image.Rect(right-3*button, top, right-2*button, bottom)
-	return chromeHitRegions{Minimize: minimize, Maximize: maximize, Close: close, Caption: caption}
-}
-
-func (r chromeHitRegions) at(p image.Point) chromePart {
-	switch {
-	case p.In(r.Minimize):
-		return chromeMinimize
-	case p.In(r.Maximize):
-		return chromeMaximize
-	case p.In(r.Close):
-		return chromeClose
-	default:
-		return chromeNone
-	}
-}
-
-func chromeAction(part chromePart, maximized bool) system.Action {
-	switch part {
-	case chromeMinimize:
-		return system.ActionMinimize
-	case chromeMaximize:
-		if maximized {
-			return system.ActionUnmaximize
-		}
-		return system.ActionMaximize
-	case chromeClose:
-		return system.ActionClose
-	default:
-		return 0
-	}
-}
-
-func (u *appUI) performWindowAction(actions system.Action) {
-	unmaximize := actions&system.ActionUnmaximize != 0
-	switch {
-	case actions&system.ActionMinimize != 0:
-		if u.chrome.mode != app.Minimized {
-			u.chrome.restoreMode = u.chrome.mode
-		}
-		u.chrome.mode = app.Minimized
-	case actions&system.ActionMaximize != 0:
-		u.chrome.mode = app.Maximized
-		u.chrome.maximized = true
-	case actions&system.ActionUnmaximize != 0:
-		u.chrome.mode = app.Windowed
-		u.chrome.maximized = false
-	case actions&system.ActionFullscreen != 0:
-		u.chrome.mode = app.Fullscreen
-		u.chrome.maximized = false
-	}
-	if u.win != nil {
-		u.win.Perform(actions)
-		if runtime.GOOS == "linux" && unmaximize {
-			u.restoreWindowedSize()
-		}
-	}
-}
-
-func (u *appUI) restoreWindowedSize() {
-	size := u.chrome.windowedSize
-	if u.win == nil || size.X <= 0 || size.Y <= 0 {
-		return
-	}
-	u.win.Option(app.Size(
-		u.chrome.metric.PxToDp(size.X),
-		u.chrome.metric.PxToDp(size.Y),
-	))
-}
-
-// recoverMinimizedWindow repairs Gio's stale Linux window mode. Wayland and
-// X11 compositors restore a minimized window without changing app.Config.Mode,
-// leaving it at Minimized. Gio then refuses title-bar moves and ignores further
-// minimize/maximize transitions.
-func (u *appUI) recoverMinimizedWindow() {
-	if runtime.GOOS != "linux" || u.chrome.mode != app.Minimized {
-		return
-	}
-	u.chrome.restorePending = u.chrome.restoreMode == app.Maximized
-	u.chrome.mode = app.Windowed
-	u.chrome.maximized = false
-	if u.win != nil {
-		u.win.Option(app.Windowed.Option())
-	}
-}
-
-func (u *appUI) finishMinimizedRestore() {
-	if !u.chrome.restorePending || u.chrome.mode != app.Windowed {
-		return
-	}
-	u.chrome.restorePending = false
-	if u.win != nil {
-		u.win.Option(app.Maximized.Option())
-	}
-}
-
-func captionContentInsets(height int) layout.Inset {
-	if runtime.GOOS == "darwin" {
-		return layout.Inset{Left: unit.Dp(macCaptionAreaDp), Right: unit.Dp(8)}
-	}
-	return layout.Inset{
-		Left:  unit.Dp(8),
-		Right: unit.Dp(3*captionButtonWidthDp + 8),
-	}
-}
-
-func (u *appUI) layoutCaptionMoveArea(gtx layout.Context) layout.Dimensions {
-	return u.chrome.decorations.LayoutMove(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Dimensions{Size: gtx.Constraints.Max}
+func (u *Controller) LayoutMoveArea(gtx layout.Context, content layout.Widget) layout.Dimensions {
+	return u.decorations.LayoutMove(gtx, func(gtx layout.Context) layout.Dimensions {
+		return content(gtx)
 	})
 }
 
-func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dimensions {
+// LayoutControls draws and updates the platform window controls.
+func (u *Controller) LayoutControls(gtx layout.Context, height int) layout.Dimensions {
 	size := image.Pt(gtx.Constraints.Max.X, height)
 	gtx.Constraints = layout.Exact(size)
 	scale := gtx.Dp(unit.Dp(1))
-	u.chrome.regions = captionHitRegions(size.X, height, scale)
-	u.chrome.decorations.Maximized = u.chrome.maximized
-	if actions := u.chrome.decorations.Update(gtx); actions != 0 {
-		u.chrome.lastAction = actions
+	u.regions = captionHitRegions(size.X, height, scale)
+	if u.backend != nil {
+		defer u.backend.setCaptionRegions(u.regions)
+	}
+	u.decorations.Maximized = u.maximized
+	if actions := u.decorations.Update(gtx); actions != 0 {
+		u.lastAction = actions
 		u.performWindowAction(actions)
 	}
 
@@ -230,7 +54,7 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 		buttonWidth := captionButtonWidthDp * scale
 		buttonHeight := captionButtonHeightDp * scale
 		buttonTop := captionButtonTopDp * scale
-		buttonHeight = minInt(height, buttonHeight)
+		buttonHeight = min(height, buttonHeight)
 		start := size.X - 3*buttonWidth
 		u.layoutWindowsCaptionButton(gtx, chromeMinimize, system.ActionMinimize, start, buttonTop, buttonWidth, buttonHeight)
 		u.layoutWindowsCaptionButton(gtx, chromeMaximize, system.ActionMaximize, start+buttonWidth, buttonTop, buttonWidth, buttonHeight)
@@ -240,24 +64,24 @@ func (u *appUI) layoutCaptionControls(gtx layout.Context, height int) layout.Dim
 	return layout.Dimensions{Size: size}
 }
 
-func (u *appUI) layoutWindowsCaptionButton(gtx layout.Context, part chromePart, action system.Action, x, y, buttonWidth, buttonHeight int) {
+func (u *Controller) layoutWindowsCaptionButton(gtx layout.Context, part chromePart, action system.Action, x, y, buttonWidth, buttonHeight int) {
 	child := gtx
 	child.Constraints = layout.Exact(image.Pt(buttonWidth, buttonHeight))
 	offset := op.Offset(image.Pt(x, y)).Push(gtx.Ops)
 	defer offset.Pop()
 
-	click := u.chrome.decorations.Clickable(action)
+	click := u.decorations.Clickable(action)
 	click.Layout(child, func(gtx layout.Context) layout.Dimensions {
-		hovered := click.Hovered() || u.chrome.hover == part
+		hovered := click.Hovered() || u.hover == part
 		bg := caseHoverBackground(part, hovered)
 		if bg.A != 0 {
 			paint.Fill(gtx.Ops, bg)
 		}
-		icon := colDim
-		if hovered && u.chrome.focused {
-			icon = colText
+		icon := style.Dim
+		if hovered && u.focused {
+			icon = style.Text
 		}
-		drawCaptionGlyph(gtx.Ops, part, icon, gtx.Constraints.Max, u.chrome.maximized)
+		drawCaptionGlyph(gtx.Ops, part, icon, gtx.Constraints.Max, u.maximized)
 		return layout.Dimensions{Size: gtx.Constraints.Max}
 	})
 }
@@ -269,23 +93,23 @@ func caseHoverBackground(part chromePart, hovered bool) (col color.NRGBA) {
 	if part == chromeClose {
 		return color.NRGBA{R: 0xc4, G: 0x3d, B: 0x45, A: 0xff}
 	}
-	return colPanel2
+	return style.Panel2
 }
 
-func (u *appUI) layoutMacCaptionButton(gtx layout.Context, part chromePart, action system.Action, x, height int) {
+func (u *Controller) layoutMacCaptionButton(gtx layout.Context, part chromePart, action system.Action, x, height int) {
 	child := gtx
 	child.Constraints = layout.Exact(image.Pt(22, height))
 	offset := op.Offset(image.Pt(x-gtx.Dp(unit.Dp(10)), 0)).Push(gtx.Ops)
 	defer offset.Pop()
 
-	click := u.chrome.decorations.Clickable(action)
+	click := u.decorations.Clickable(action)
 	click.Layout(child, func(gtx layout.Context) layout.Dimensions {
 		d := gtx.Dp(unit.Dp(12))
 		y := (height - d) / 2
 		margin := gtx.Dp(unit.Dp(10))
 		r := image.Rect(margin, y, margin+d, y+d)
 		fill := color.NRGBA{R: 0x69, G: 0x70, B: 0x7b, A: 0xff}
-		if u.chrome.focused {
+		if u.focused {
 			switch part {
 			case chromeClose:
 				fill = color.NRGBA{R: 0xff, G: 0x5f, B: 0x57, A: 0xff}
@@ -303,7 +127,7 @@ func (u *appUI) layoutMacCaptionButton(gtx layout.Context, part chromePart, acti
 func drawCaptionGlyph(ops *op.Ops, part chromePart, col color.NRGBA, size image.Point, maximized bool) {
 	cx := size.X / 2
 	cy := size.Y / 2
-	glyph := maxInt(6, size.Y/7)
+	glyph := max(6, size.Y/7)
 	if part == chromeMaximize && maximized {
 		geometry := captionRestoreGeometry(cx, cy, glyph)
 		var bracket clip.Path
@@ -353,7 +177,7 @@ func captionRestoreGeometry(cx, cy, half int) restoreGlyphGeometry {
 	}
 	return restoreGlyphGeometry{
 		Square:        square,
-		Radius:        maxInt(1, half/4),
+		Radius:        max(1, half/4),
 		BracketStart:  image.Pt(cx-half/2, cy-half-1),
 		BracketCorner: image.Pt(cx+half+1, cy-half-1),
 		BracketEnd:    image.Pt(cx+half+1, cy+half/2),
@@ -373,7 +197,7 @@ func addRoundedRectPath(path *clip.Path, rect image.Rectangle, radius int) {
 		addRectPath(path, rect)
 		return
 	}
-	r := minInt(radius, minInt(rect.Dx(), rect.Dy())/2)
+	r := min(radius, min(rect.Dx(), rect.Dy())/2)
 	path.MoveTo(f32.Pt(float32(rect.Min.X+r), float32(rect.Min.Y)))
 	path.LineTo(f32.Pt(float32(rect.Max.X-r), float32(rect.Min.Y)))
 	path.QuadTo(
