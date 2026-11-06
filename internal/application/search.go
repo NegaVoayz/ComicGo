@@ -14,6 +14,14 @@ func (a *App) ListAuthors() ([]string, error) {
 	return a.store.AuthorValues()
 }
 
+// ListTags returns every distinct Genre tag currently present in the index.
+func (a *App) ListTags() ([]string, error) {
+	if a.store == nil {
+		return nil, nil
+	}
+	return a.store.TagValues()
+}
+
 type searchQuery struct {
 	text    []string // lower-cased substrings, all must occur somewhere
 	tags    []string // whole-tag matches (case-insensitive), all must be present

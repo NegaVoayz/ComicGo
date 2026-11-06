@@ -257,7 +257,7 @@ func (u *Renderer) layoutCardMeta(gtx layout.Context, card *CardState, width, he
 			if card.Card.Author == "" {
 				return layout.Dimensions{}
 			}
-			return u.Button(gtx, &card.AuthorClick, card.Card.Author, ButtonStyle{Plain: true, Compact: true})
+			return u.Button(gtx, &card.AuthorClick, card.Card.Author, ButtonStyle{Primary: true, Compact: true})
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			children := []layout.FlexChild{}

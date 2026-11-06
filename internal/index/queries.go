@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -100,6 +101,52 @@ ORDER BY TRIM(value) COLLATE NOCASE, TRIM(value) COLLATE BINARY`)
 		out = append(out, author)
 	}
 	return out, rows.Err()
+}
+
+// TagValues returns every distinct Genre tag in the index. Genre stores a
+// comma-separated list in each comic row, so split the stored values with the
+// same separators accepted by the metadata editor before de-duplicating.
+func (s *Store) TagValues() ([]string, error) {
+	rows, err := s.db.QueryContext(context.Background(), `
+SELECT value
+FROM comic_meta
+WHERE key='Genre' AND TRIM(value) <> ''
+ORDER BY value COLLATE NOCASE, value COLLATE BINARY`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	seen := map[string]bool{}
+	var out []string
+	for rows.Next() {
+		var genre string
+		if err := rows.Scan(&genre); err != nil {
+			return nil, err
+		}
+		for _, part := range strings.FieldsFunc(genre, func(r rune) bool {
+			return r == ',' || r == '、' || r == '，'
+		}) {
+			tag := strings.TrimSpace(part)
+			key := strings.ToLower(tag)
+			if tag == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, tag)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool {
+		left, right := strings.ToLower(out[i]), strings.ToLower(out[j])
+		if left == right {
+			return out[i] < out[j]
+		}
+		return left < right
+	})
+	return out, nil
 }
 
 // RowByID loads one row including KV.

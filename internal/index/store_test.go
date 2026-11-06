@@ -3,6 +3,7 @@ package index
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -187,6 +188,34 @@ func TestAuthorValuesAreDistinctAndSorted(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("authors = %q, want %q", got, want)
 		}
+	}
+}
+
+func TestTagValuesSplitDistinctAndSorted(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for i, genre := range []string{"Zed, alpha、Beta", "Alpha，gamma", "  omega  "} {
+		rec := Record{
+			Path: filepath.Join("C:", "zips", fmt.Sprintf("tag-%d.cbz", i)),
+			Dir:  filepath.Join("C:", "zips"), Filename: fmt.Sprintf("tag-%d.cbz", i),
+			KV: map[string]string{"Genre": genre},
+		}
+		if _, err := s.CommitComic(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.TagValues()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Alpha", "Beta", "gamma", "omega", "Zed"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("tags = %q, want %q", got, want)
 	}
 }
 

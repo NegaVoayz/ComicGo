@@ -5,6 +5,7 @@ import (
 	. "comicgo/internal/ui"
 
 	"image"
+	"strings"
 	"testing"
 
 	"gioui.org/f32"
@@ -188,5 +189,85 @@ func TestAuthorChipFiltersInsteadOfOpeningDetail(t *testing.T) {
 	}
 	if ui.Screen != ScreenShelf || ui.Detail.Id != 0 {
 		t.Fatalf("author click opened detail screen: screen=%v detail=%d", ui.Screen, ui.Detail.Id)
+	}
+}
+
+func TestMetadataTagsAddRemoveAndDeduplicate(t *testing.T) {
+	ui := NewUI(nil)
+	ui.Detail.Tags = []string{"Alpha"}
+	r := renderer(ui)
+	if !r.addDraftTags("alpha, Beta、beta，Gamma") {
+		t.Fatal("new tags were not added")
+	}
+	want := []string{"Alpha", "Beta", "Gamma"}
+	if len(ui.Detail.Tags) != len(want) {
+		t.Fatalf("tags = %q, want %q", ui.Detail.Tags, want)
+	}
+	for i := range want {
+		if ui.Detail.Tags[i] != want[i] {
+			t.Fatalf("tags = %q, want %q", ui.Detail.Tags, want)
+		}
+	}
+	r.removeDraftTag(1)
+	if strings.Join(ui.Detail.Tags, "|") != "Alpha|Gamma" {
+		t.Fatalf("tags after removal = %q", ui.Detail.Tags)
+	}
+}
+
+func TestMetadataTagOptionsExcludeSelectedCaseInsensitively(t *testing.T) {
+	ui := NewUI(nil)
+	ui.Detail.Tags = []string{"Alpha", "gamma"}
+	ui.Detail.TagValues = []string{"alpha", "Beta", "Gamma", "Delta"}
+	got := renderer(ui).tagOptions()
+	if strings.Join(got, "|") != "Beta|Delta" {
+		t.Fatalf("tag options = %q, want Beta|Delta", got)
+	}
+}
+
+func TestDetailAuthorChipFiltersInsteadOfStayingOnDetail(t *testing.T) {
+	ui := NewUI(nil)
+	ui.Screen = ScreenDetail
+	ui.Detail.Id = 9
+	ui.Detail.Loading = false
+	ui.Detail.Detail.Meta.KV = map[string]string{"Author": "Tanaka Yoshi"}
+	ui.Detail.Detail.Meta.PageCount = 1
+	router := new(input.Router)
+	ops := new(op.Ops)
+	frame := func() {
+		gtx := layout.Context{
+			Ops: ops, Source: router.Source(),
+			Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Exact(image.Pt(1200, 820)),
+		}
+		renderer(ui).layoutDetail(gtx)
+		router.Frame(ops)
+		ops.Reset()
+	}
+	frame()
+	var position f32.Point
+	for y := 80; y < 600 && position == (f32.Point{}); y += 4 {
+		for x := 560; x < 1100; x += 4 {
+			probe := f32.Pt(float32(x), float32(y))
+			router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, PointerID: 1, Position: probe})
+			frame()
+			if ui.Detail.AuthorClick.Hovered() {
+				position = probe
+				break
+			}
+		}
+	}
+	if position == (f32.Point{}) {
+		t.Fatal("could not locate detail author chip")
+	}
+	router.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1, Buttons: pointer.ButtonPrimary, Position: position})
+	frame()
+	router.Queue(pointer.Event{Kind: pointer.Release, Source: pointer.Mouse, PointerID: 1, Position: position})
+	frame()
+	frame()
+	if strings.Join(ui.Authors, "|") != "Tanaka Yoshi" {
+		t.Fatalf("author filters = %q, want Tanaka Yoshi", ui.Authors)
+	}
+	if ui.Screen != ScreenShelf {
+		t.Fatalf("screen = %v after author click, want shelf", ui.Screen)
 	}
 }

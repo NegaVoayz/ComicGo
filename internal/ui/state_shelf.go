@@ -2,10 +2,10 @@ package ui
 
 import (
 	"image"
-	"strings"
 
 	Model "comicgo/internal/model"
 	model "comicgo/internal/model"
+	"comicgo/internal/ui/gridgeom"
 
 	"gioui.org/layout"
 	"gioui.org/unit"
@@ -126,49 +126,18 @@ func (u *UI) closeRuleMenu() bool {
 func LandscapeLeftCrop(width, height int) bool { return height < width }
 
 func GridGeometry(width, minCard, gap, pad int) (cols, cardWidth, coverHeight, rowHeight int) {
-	if width <= 0 {
-		return 1, minCard, minCard * 4 / 3, minCard*4/3 + CaptionH + gap
-	}
-	cols = maxInt(2, (width-pad+gap)/(minCard+gap))
-	cardWidth = maxInt(80, (width-pad-gap*(cols-1))/cols)
-	coverHeight = cardWidth * 4 / 3
-	rowHeight = coverHeight + CaptionH + gap
-	return
+	return gridgeom.Geometry(width, minCard, gap, pad)
 }
 
 func GridViewportHeight(requested, width, total, minCard, gap, pad int) int {
-	if total <= 0 {
-		return requested
-	}
-	cols, _, _, rowH := GridGeometry(width, minCard, gap, pad)
-	rows := (total + cols - 1) / cols
-	contentH := rows*rowH - gap + pad
-	return minInt(requested, maxInt(rowH, contentH))
+	return gridgeom.ViewportHeight(requested, width, total, minCard, gap, pad)
 }
 
 func VisibleRows(first, count, rows, pad int) (int, int) {
-	if rows <= 0 {
-		return 0, -1
-	}
-	start := maxInt(0, first-pad)
-	end := minInt(rows-1, first+maxInt(count, 1)+pad)
-	return start, end
+	return gridgeom.VisibleRows(first, count, rows, pad)
 }
 
-func TitleInitials(title string) string {
-	words := strings.Fields(title)
-	var b strings.Builder
-	for i := 0; i < len(words) && i < 2; i++ {
-		runes := []rune(words[i])
-		if len(runes) > 0 {
-			b.WriteRune(runes[0])
-		}
-	}
-	if b.Len() == 0 {
-		return "?"
-	}
-	return strings.ToUpper(b.String())
-}
+func TitleInitials(title string) string { return gridgeom.TitleInitials(title) }
 
 // ---- details ----
 
@@ -188,6 +157,7 @@ type DetailState struct {
 	TagsEditor   widget.Editor
 	SourceEditor widget.Editor
 	AuthorMenu   widget.Clickable
+	TagMenu      widget.Clickable
 	AuthorClose  widget.Clickable
 	AuthorClicks []widget.Clickable
 	AuthorList   layout.List
@@ -195,6 +165,11 @@ type DetailState struct {
 	AuthorCenter int
 	AuthorAnchor image.Point
 	AuthorValues []string
+	TagValues    []string
+	Tags         []string
+	TagRemove    []widget.Clickable
+	TagAdd       widget.Clickable
+	PickerKind   string
 	Back         widget.Clickable
 	Edit         widget.Clickable
 	Copy         widget.Clickable
@@ -202,6 +177,7 @@ type DetailState struct {
 	Save         widget.Clickable
 	Cancel       widget.Clickable
 	TagClicks    []widget.Clickable
+	AuthorClick  widget.Clickable
 }
 
 type HeroLoadedEvent struct {
@@ -270,6 +246,7 @@ type DetailSavedEvent struct {
 type AuthorsLoadedEvent struct {
 	Id      int64
 	Authors []string
+	Tags    []string
 	Err     error
 }
 

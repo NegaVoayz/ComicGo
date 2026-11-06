@@ -6,6 +6,7 @@ import (
 	. "comicgo/internal/ui"
 	"comicgo/internal/ui/windowing"
 	"image"
+	"strings"
 
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -62,6 +63,13 @@ func (u *Renderer) layoutDetail(gtx layout.Context) layout.Dimensions {
 	}
 	if u.Detail.Start.Clicked(gtx) {
 		u.startReader()
+	}
+	author := strings.TrimSpace(u.Detail.Detail.Meta.KV["Author"])
+	if author != "" && u.Detail.AuthorClick.Clicked(gtx) {
+		u.addAuthor(author)
+		u.Screen = ScreenShelf
+		u.Detail = DetailState{}
+		return layout.Dimensions{}
 	}
 	tags := SplitTags(u.Detail.Detail.Meta.KV["Genre"])
 	if len(u.Detail.TagClicks) != len(tags) {

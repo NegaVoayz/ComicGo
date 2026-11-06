@@ -7,11 +7,14 @@ import (
 	"image"
 	"strings"
 
+	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
+	"gioui.org/widget"
 	"gioui.org/x/outlay"
 )
 
@@ -60,7 +63,7 @@ func (u *Renderer) layoutDetailMeta(gtx layout.Context, tags []string) layout.Di
 	}
 	if author := strings.TrimSpace(m.KV["Author"]); author != "" {
 		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.Label(gtx, author, unit.Sp(14), colAccent, 2)
+			return u.Button(gtx, &u.Detail.AuthorClick, "AUTHOR  "+author, ButtonStyle{Primary: true, Compact: true})
 		}))
 	}
 	children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -148,12 +151,104 @@ func (u *Renderer) sourceField(gtx layout.Context, source string) layout.Dimensi
 func SplitTags(s string) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, part := range strings.Split(s, ",") {
+	for _, part := range strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == '、' || r == '，'
+	}) {
 		part = strings.TrimSpace(part)
-		if part != "" && !seen[part] {
-			seen[part] = true
+		key := strings.ToLower(part)
+		if part != "" && !seen[key] {
+			seen[key] = true
 			out = append(out, part)
 		}
 	}
 	return out
+}
+
+func (u *Renderer) closePicker() {
+	u.Detail.PickerKind = ""
+	u.Detail.AuthorOpen = false
+}
+
+func (u *Renderer) metadataField(label, hint string, editor *widget.Editor) []layout.FlexChild {
+	return []layout.FlexChild{
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.Label(gtx, label, unit.Sp(11), colDim, 1)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.Editor(gtx, editor, hint, 36)
+		}),
+	}
+}
+
+func (u *Renderer) valueMenuButton(gtx layout.Context, click *widget.Clickable, active bool) layout.Dimensions {
+	size := image.Pt(gtx.Dp(unit.Dp(38)), gtx.Dp(unit.Dp(36)))
+	gtx.Constraints.Min = size
+	gtx.Constraints.Max = size
+	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		border := colLine
+		if click.Hovered() || active {
+			border = colAccent
+		}
+		paint.FillShape(gtx.Ops, border, clip.RRect{Rect: image.Rectangle{Max: size}, NE: 6, NW: 6, SE: 6, SW: 6}.Op(gtx.Ops))
+		inner := image.Rect(1, 1, size.X-1, size.Y-1)
+		paint.FillShape(gtx.Ops, colBGSoft, clip.RRect{Rect: inner, NE: 5, NW: 5, SE: 5, SW: 5}.Op(gtx.Ops))
+		cx, cy := float32(size.X/2), float32(size.Y/2)
+		var path clip.Path
+		path.Begin(gtx.Ops)
+		path.MoveTo(f32.Pt(cx-4, cy-2))
+		path.LineTo(f32.Pt(cx, cy+2))
+		path.LineTo(f32.Pt(cx+4, cy-2))
+		paint.FillShape(gtx.Ops, colText, clip.Stroke{Path: path.End(), Width: float32(max(1, gtx.Dp(unit.Dp(1.5))))}.Op())
+		return layout.Dimensions{Size: size}
+	})
+}
+
+func (u *Renderer) layoutAuthorMenu(gtx layout.Context, options []string) {
+	macro := op.Record(gtx.Ops)
+	menuDims := u.layoutAuthorMenuPanel(gtx, options)
+	menu := macro.Stop()
+	u.Detail.AuthorClose.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: gtx.Constraints.Max}
+	})
+	x := u.Detail.AuthorCenter - menuDims.Size.X/2
+	if u.Detail.AuthorCenter == 0 {
+		x = (gtx.Constraints.Max.X - menuDims.Size.X) / 2
+	}
+	x = max(gtx.Dp(unit.Dp(8)), min(x, gtx.Constraints.Max.X-menuDims.Size.X-gtx.Dp(unit.Dp(8))))
+	y := u.Detail.AuthorAnchor.Y + gtx.Dp(unit.Dp(18))
+	if y+menuDims.Size.Y > gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8)) {
+		y = u.Detail.AuthorAnchor.Y - menuDims.Size.Y - gtx.Dp(unit.Dp(8))
+	}
+	y = max(gtx.Dp(unit.Dp(8)), y)
+	defer op.Offset(image.Pt(x, y)).Push(gtx.Ops).Pop()
+	menu.Add(gtx.Ops)
+}
+
+func (u *Renderer) layoutAuthorMenuPanel(gtx layout.Context, options []string) layout.Dimensions {
+	width := min(gtx.Dp(unit.Dp(300)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(16)))
+	rowHeight := gtx.Dp(unit.Dp(30))
+	height := min(gtx.Dp(unit.Dp(240)), max(rowHeight, len(options)*rowHeight))
+	widthDp := unit.Dp(float32(width) / gtx.Metric.PxPerDp)
+	return u.Panel(gtx, widthDp, func(gtx layout.Context) layout.Dimensions {
+		gtx.Constraints.Min.Y = height
+		gtx.Constraints.Max.Y = height
+		if len(options) == 0 {
+			message := "No authors indexed"
+			if u.Detail.PickerKind == "tag" {
+				message = "No more indexed tags"
+			}
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return u.Label(gtx, message, unit.Sp(12), colDim, 1)
+			})
+		}
+		u.Detail.AuthorList.Axis = layout.Vertical
+		return u.Detail.AuthorList.Layout(gtx, len(options), func(gtx layout.Context, i int) layout.Dimensions {
+			style := ButtonStyle{Plain: true, Centered: true}
+			if u.Detail.PickerKind == "author" && strings.EqualFold(options[i], u.Detail.AuthorEditor.Text()) {
+				style = ButtonStyle{Primary: true, Centered: true}
+			}
+			gtx.Constraints.Min.X = gtx.Constraints.Max.X
+			return u.Button(gtx, &u.Detail.AuthorClicks[i], options[i], style)
+		})
+	})
 }
