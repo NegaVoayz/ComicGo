@@ -67,7 +67,7 @@ func (u *UI) Button(gtx layout.Context, click *widget.Clickable, label string, s
 		})
 	}
 	return click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Stack{Alignment: layout.Center}.Layout(gtx,
+		return layout.Stack{Alignment: layout.W}.Layout(gtx,
 			layout.Expanded(func(gtx layout.Context) layout.Dimensions {
 				size := gtx.Constraints.Min
 				if size.X == 0 || size.Y == 0 {
