@@ -138,6 +138,17 @@ func (u *Renderer) layoutDetailTop(gtx layout.Context) layout.Dimensions {
 	)
 }
 
+func (u *Renderer) layoutAuthorSelector(gtx layout.Context) layout.Dimensions {
+	return layout.Flex{Axis: layout.Horizontal, Gap: 6, Alignment: layout.Middle}.Layout(gtx,
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return u.Editor(gtx, &u.Detail.AuthorEditor, "Choose or type one author", 36)
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.valueMenuButton(gtx, &u.Detail.AuthorMenu, u.Detail.PickerKind == "author")
+		}),
+	)
+}
+
 func (u *Renderer) layoutDetailBody(gtx layout.Context, tags []string) layout.Dimensions {
 	return layout.Inset{Top: unit.Dp(28), Bottom: unit.Dp(28), Left: unit.Dp(34), Right: unit.Dp(34)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceSides}.Layout(gtx,

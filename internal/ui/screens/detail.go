@@ -10,6 +10,7 @@ import (
 
 	"gioui.org/f32"
 	"gioui.org/font"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -159,36 +160,25 @@ func (u *Renderer) closePicker() {
 	u.Detail.PickerSuppressed = true
 }
 
-func (u *Renderer) openPicker(kind string, gtx layout.Context, anchor image.Point) {
+func (u *Renderer) openPicker(kind string, gtx layout.Context) {
 	u.Detail.PickerKind = kind
 	u.Detail.AuthorOpen = true
 	u.Detail.PickerSuppressed = false
-	if anchor.Y == 0 {
-		anchor.Y = gtx.Constraints.Max.Y / 2
-	}
-	u.Detail.PickerAnchor = anchor
-	contentWidth := gtx.Dp(unit.Dp(500))
+	contentWidth := gtx.Dp(unit.Dp(metadataContentWidth))
 	u.Detail.PickerRight = (gtx.Constraints.Max.X + contentWidth) / 2
 	if kind == "tag" {
 		u.Detail.PickerRight -= u.Detail.TagAddWidth + gtx.Dp(unit.Dp(6))
 	}
 }
 
-const metadataPickerColumns = 3
+const (
+	metadataContentWidth  = 500
+	metadataFormTopOffset = 30
+	metadataPickerColumns = 3
+)
 
 func pickerGridRows(total int) int {
 	return max(1, (total+metadataPickerColumns-1)/metadataPickerColumns)
-}
-
-func (u *Renderer) metadataField(label, hint string, editor *widget.Editor) []layout.FlexChild {
-	return []layout.FlexChild{
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.Label(gtx, label, unit.Sp(11), colDim, 1)
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.Editor(gtx, editor, hint, 36)
-		}),
-	}
 }
 
 func (u *Renderer) valueMenuButton(gtx layout.Context, click *widget.Clickable, active bool) layout.Dimensions {
@@ -214,15 +204,45 @@ func (u *Renderer) valueMenuButton(gtx layout.Context, click *widget.Clickable, 
 	})
 }
 
+func (u *Renderer) layoutPickerBackdrop(gtx layout.Context, modal image.Rectangle) {
+	full := image.Rectangle{Max: gtx.Constraints.Max}
+	areas := []struct {
+		rect image.Rectangle
+		pass bool
+	}{
+		{image.Rect(full.Min.X, full.Min.Y, full.Max.X, modal.Min.Y), false},
+		{image.Rect(full.Min.X, modal.Max.Y, full.Max.X, full.Max.Y), false},
+		{image.Rect(full.Min.X, modal.Min.Y, modal.Min.X, modal.Max.Y), false},
+		{image.Rect(modal.Max.X, modal.Min.Y, full.Max.X, modal.Max.Y), false},
+		{modal, true},
+	}
+	for _, area := range areas {
+		if area.rect.Empty() {
+			continue
+		}
+		areaGtx := gtx
+		areaGtx.Constraints = layout.Exact(area.rect.Size())
+		offset := op.Offset(area.rect.Min).Push(gtx.Ops)
+		var pass pointer.PassStack
+		if area.pass {
+			pass = pointer.PassOp{}.Push(gtx.Ops)
+		}
+		u.Detail.AuthorClose.Layout(areaGtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Dimensions{Size: area.rect.Size()}
+		})
+		if area.pass {
+			pass.Pop()
+		}
+		offset.Pop()
+	}
+}
+
 func (u *Renderer) layoutAuthorMenu(gtx layout.Context, options []string) {
-	y := u.Detail.PickerAnchor.Y + gtx.Dp(unit.Dp(18))
+	y := u.Detail.PickerY + gtx.Dp(unit.Dp(4))
 	available := max(gtx.Dp(unit.Dp(30)), gtx.Constraints.Max.Y-gtx.Dp(unit.Dp(8))-y)
 	macro := op.Record(gtx.Ops)
 	menuDims := u.layoutAuthorMenuPanel(gtx, options, available)
 	menu := macro.Stop()
-	u.Detail.AuthorClose.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Dimensions{Size: gtx.Constraints.Max}
-	})
 	x := u.Detail.PickerRight - menuDims.Size.X
 	if u.Detail.PickerRight == 0 {
 		x = (gtx.Constraints.Max.X - menuDims.Size.X) / 2

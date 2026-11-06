@@ -5,10 +5,12 @@ import (
 	. "comicgo/internal/ui"
 	"comicgo/internal/ui/metadata"
 	"errors"
+	"image"
 	"strings"
 
 	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
@@ -88,9 +90,9 @@ func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
 	if !u.Detail.PickerSuppressed {
 		switch {
 		case authorFocused && (u.Detail.PickerKind != "author" || !u.Detail.AuthorOpen):
-			u.openPicker("author", gtx, u.Detail.PickerAnchor)
+			u.openPicker("author", gtx)
 		case tagFocused && (u.Detail.PickerKind != "tag" || !u.Detail.AuthorOpen):
-			u.openPicker("tag", gtx, u.Detail.PickerAnchor)
+			u.openPicker("tag", gtx)
 		}
 	}
 	if u.Detail.Cancel.Clicked(gtx) {
@@ -105,6 +107,7 @@ func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
 		u.closePicker()
 		u.Invalidate()
 	}
+	openedKind, wasOpen := u.Detail.PickerKind, u.Detail.AuthorOpen
 	if u.Detail.Save.Clicked(gtx) && !u.DialogBusy {
 		edit := model.MetaEdit{
 			Title:  u.Detail.NameEditor.Text(),
@@ -147,49 +150,98 @@ func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
 		u.Invalidate()
 	}
 	if u.Detail.AuthorMenu.Clicked(gtx) {
-		if u.Detail.PickerKind == "author" && u.Detail.AuthorOpen {
+		if wasOpen && openedKind == "author" {
 			u.closePicker()
 		} else {
-			u.openPicker("author", gtx, u.Press.Position)
+			u.openPicker("author", gtx)
 		}
 	}
 	if u.Detail.TagMenu.Clicked(gtx) {
-		if u.Detail.PickerKind == "tag" && u.Detail.AuthorOpen {
+		if wasOpen && openedKind == "tag" {
 			u.closePicker()
 		} else {
-			u.openPicker("tag", gtx, u.Press.Position)
+			u.openPicker("tag", gtx)
 		}
 	}
 
+	paint.Fill(gtx.Ops, colBlack50)
+	var authorBottom, tagBottom int
+	modalGtx := gtx
+	modalGtx.Constraints.Min = image.Point{}
+	macro := op.Record(gtx.Ops)
+	modalDims := u.Modal(modalGtx, unit.Dp(560), func(gtx layout.Context) layout.Dimensions {
+		return u.layoutMetadataForm(gtx, &authorBottom, &tagBottom)
+	})
+	modal := macro.Stop()
+	x := (gtx.Constraints.Max.X - modalDims.Size.X) / 2
+	y := (gtx.Constraints.Max.Y - modalDims.Size.Y) / 2
+	op.Offset(image.Pt(x, y)).Add(gtx.Ops)
+	modal.Add(gtx.Ops)
+	contentTop := y + gtx.Dp(unit.Dp(metadataFormTopOffset))
+	u.Detail.PickerRight = (gtx.Constraints.Max.X + gtx.Dp(unit.Dp(metadataContentWidth))) / 2
+	switch u.Detail.PickerKind {
+	case "author":
+		u.Detail.PickerY = contentTop + authorBottom
+	case "tag":
+		u.Detail.PickerY = contentTop + tagBottom
+		u.Detail.PickerRight -= u.Detail.TagAddWidth + gtx.Dp(unit.Dp(6))
+	}
+	if u.Detail.AuthorOpen {
+		u.layoutPickerBackdrop(gtx, image.Rect(x, y, x+modalDims.Size.X, y+modalDims.Size.Y))
+		u.layoutAuthorMenu(gtx, options)
+	}
+}
+
+func (u *Renderer) layoutMetadataForm(gtx layout.Context, authorBottom, tagBottom *int) layout.Dimensions {
+	var cursor int
+	add := func(content layout.Widget, capture func(int)) layout.FlexChild {
+		return layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			dims := content(gtx)
+			cursor += dims.Size.Y
+			if capture != nil {
+				capture(cursor)
+			}
+			cursor += gtx.Dp(unit.Dp(7))
+			return dims
+		})
+	}
 	children := []layout.FlexChild{
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+		add(func(gtx layout.Context) layout.Dimensions {
 			return u.LabelColor(gtx, "Edit metadata", unit.Sp(19), colText, 1, font.Bold)
-		}),
+		}, nil),
 	}
-	children = append(children, u.metadataField("Title", "", &u.Detail.NameEditor)...)
+	field := func(text, hint string, editor *widget.Editor) {
+		children = append(children,
+			add(func(gtx layout.Context) layout.Dimensions {
+				return u.Label(gtx, text, unit.Sp(11), colDim, 1)
+			}, nil),
+			add(func(gtx layout.Context) layout.Dimensions {
+				return u.Editor(gtx, editor, hint, 36)
+			}, nil),
+		)
+	}
+	field("Title", "", &u.Detail.NameEditor)
 	children = append(children,
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+		add(func(gtx layout.Context) layout.Dimensions {
 			return u.LabelColor(gtx, "AUTHOR - SINGLE SELECT", unit.Sp(11), colAccent, 1, font.Normal)
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+		}, nil),
+		add(func(gtx layout.Context) layout.Dimensions {
 			return u.layoutAuthorSelector(gtx)
-		}),
-	)
-	children = append(children,
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+		}, func(bottom int) { *authorBottom = bottom }),
+		add(func(gtx layout.Context) layout.Dimensions {
 			return u.Label(gtx, "TAGS", unit.Sp(11), colDim, 1)
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+		}, nil),
+		add(func(gtx layout.Context) layout.Dimensions {
 			return u.layoutTagsSelector(gtx)
-		}),
+		}, func(bottom int) { *tagBottom = bottom }),
 	)
-	children = append(children, u.metadataField("Source", "", &u.Detail.SourceEditor)...)
+	field("Source", "", &u.Detail.SourceEditor)
 	if u.Detail.SaveErr != "" {
-		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+		children = append(children, add(func(gtx layout.Context) layout.Dimensions {
 			return u.Label(gtx, u.Detail.SaveErr, unit.Sp(12), colFav, 2)
-		}))
+		}, nil))
 	}
-	children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+	children = append(children, add(func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Horizontal, Gap: 8}.Layout(gtx,
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return u.Button(gtx, &u.Detail.Cancel, "Cancel", ButtonStyle{Disabled: u.DialogBusy})
@@ -202,35 +254,8 @@ func (u *Renderer) layoutMetadataEditor(gtx layout.Context) {
 				return u.Button(gtx, &u.Detail.Save, label, ButtonStyle{Solid: true, Disabled: u.DialogBusy})
 			}),
 		)
-	}))
-
-	layout.Stack{Alignment: layout.Center}.Layout(gtx,
-		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-			paint.Fill(gtx.Ops, colBlack50)
-			return layout.Dimensions{Size: gtx.Constraints.Max}
-		}),
-		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return u.Modal(gtx, unit.Dp(560), func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{Axis: layout.Vertical, Gap: 7}.Layout(gtx, children...)
-				})
-			})
-		}),
-	)
-	if u.Detail.AuthorOpen {
-		u.layoutAuthorMenu(gtx, options)
-	}
-}
-
-func (u *Renderer) layoutAuthorSelector(gtx layout.Context) layout.Dimensions {
-	return layout.Flex{Axis: layout.Horizontal, Gap: 6, Alignment: layout.Middle}.Layout(gtx,
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return u.Editor(gtx, &u.Detail.AuthorEditor, "Choose or type one author", 36)
-		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.valueMenuButton(gtx, &u.Detail.AuthorMenu, u.Detail.PickerKind == "author")
-		}),
-	)
+	}, nil))
+	return layout.Flex{Axis: layout.Vertical, Gap: 7}.Layout(gtx, children...)
 }
 
 func (u *Renderer) layoutTagsSelector(gtx layout.Context) layout.Dimensions {

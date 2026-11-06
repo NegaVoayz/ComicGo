@@ -248,3 +248,30 @@ func TestTopBarImportButtonStillClicks(t *testing.T) {
 		t.Fatal("Import menu did not become visible on the following frame")
 	}
 }
+
+func TestEditorClickPastTextMovesCaretToEnd(t *testing.T) {
+	u := NewUI(nil)
+	editor := widget.Editor{SingleLine: true}
+	editor.SetText("abc")
+	router := new(input.Router)
+	ops := new(op.Ops)
+	frame := func() {
+		gtx := layout.Context{
+			Ops: ops, Source: router.Source(),
+			Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+			Constraints: layout.Exact(image.Pt(300, 36)),
+		}
+		u.Editor(gtx, &editor, "", 36)
+		router.Frame(ops)
+		ops.Reset()
+	}
+	frame()
+	router.Queue(pointer.Event{
+		Kind: pointer.Press, Source: pointer.Mouse, PointerID: 1,
+		Buttons: pointer.ButtonPrimary, Position: f32.Pt(220, 18),
+	})
+	frame()
+	if _, col := editor.CaretPos(); col != 3 {
+		t.Fatalf("caret column = %d after right-side click, want 3", col)
+	}
+}

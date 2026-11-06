@@ -154,28 +154,6 @@ func TestReaderFooterControlsUseExactHitBounds(t *testing.T) {
 	}
 }
 
-func TestAuthorOptionsFilterAndDeduplicateTypedValue(t *testing.T) {
-	ui := NewUI(nil)
-	ui.Detail.AuthorEditor.SetText(" current ")
-	ui.Detail.AuthorValues = []string{"Alpha", "alpha", "Current", "Beta"}
-	got := renderer(ui).authorOptions()
-	want := []string{"current"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("author options = %q, want %q", got, want)
-	}
-}
-
-func TestTagOptionsFilterTypedValueAndExcludeSelected(t *testing.T) {
-	ui := NewUI(nil)
-	ui.Detail.TagsEditor.SetText("be")
-	ui.Detail.Tags = []string{"Beta"}
-	ui.Detail.TagValues = []string{"Alpha", "Beta", "Better", "Comedy"}
-	got := renderer(ui).tagOptions()
-	if strings.Join(got, "|") != "Better" {
-		t.Fatalf("tag options = %q, want Better", got)
-	}
-}
-
 func TestMetadataPickerUsesThreeColumns(t *testing.T) {
 	if got := pickerGridRows(7); got != 3 {
 		t.Fatalf("picker rows for 7 values = %d, want 3", got)
@@ -202,13 +180,19 @@ func TestMetadataPickerOpensForFocusedEditor(t *testing.T) {
 	}
 	frame(&ui.Detail.AuthorEditor)
 	frame(nil)
-	if !ui.Detail.AuthorOpen || ui.Detail.PickerKind != "author" {
-		t.Fatalf("author focus opened picker %q (open=%v)", ui.Detail.PickerKind, ui.Detail.AuthorOpen)
+	authorY := ui.Detail.PickerY
+	if !ui.Detail.AuthorOpen || ui.Detail.PickerKind != "author" || authorY < 200 {
+		t.Fatalf("author focus opened picker %q (open=%v, y=%d)", ui.Detail.PickerKind, ui.Detail.AuthorOpen, authorY)
 	}
 	frame(&ui.Detail.TagsEditor)
 	frame(nil)
-	if !ui.Detail.AuthorOpen || ui.Detail.PickerKind != "tag" || ui.Detail.PickerRight >= 850 {
+	if !ui.Detail.AuthorOpen || ui.Detail.PickerKind != "tag" || ui.Detail.PickerY <= authorY || ui.Detail.PickerRight >= 850 {
 		t.Fatalf("tag focus opened picker %q (open=%v)", ui.Detail.PickerKind, ui.Detail.AuthorOpen)
+	}
+	ui.Detail.TagsEditor.SetText("Custom")
+	clickHovered(t, router, ops, func() { frame(nil) }, image.Rect(150, 200, 1050, 700), 4, ui.Detail.TagAdd.Hovered)
+	if !slices.Contains(ui.Detail.Tags, "Custom") {
+		t.Fatalf("tag Add button was blocked by picker backdrop: %q", ui.Detail.Tags)
 	}
 }
 

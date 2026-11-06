@@ -120,6 +120,7 @@ func (u *UI) Editor(gtx layout.Context, editor *widget.Editor, hint string, heig
 	event.Op(gtx.Ops, &focus.tag)
 	area.Pop()
 	pass.Pop()
+	setCaretEnd := false
 	for {
 		ev, ok := gtx.Event(pointer.Filter{Target: &focus.tag, Kinds: pointer.Press})
 		if !ok {
@@ -127,16 +128,19 @@ func (u *UI) Editor(gtx layout.Context, editor *widget.Editor, hint string, heig
 		}
 		if press, ok := ev.(pointer.Event); ok && press.Kind == pointer.Press {
 			u.Press.EditorHit = true
-			u.Press.EditorPosition = press.Position.Round()
 			if editor == &u.Detail.AuthorEditor || editor == &u.Detail.TagsEditor {
-				u.Detail.PickerAnchor = u.Press.EditorPosition
 				u.Detail.PickerSuppressed = false
+			}
+			if press.Position.X > float32(gtx.Dp(unit.Dp(9))+u.editorTextWidth(gtx, editor.Text())) {
+				end := editor.Len()
+				editor.SetCaret(end, end)
+				setCaretEnd = true
 			}
 			gtx.Execute(key.FocusCmd{Tag: editor})
 			u.Invalidate()
 		}
 	}
-	return layout.Stack{}.Layout(gtx,
+	dims := layout.Stack{}.Layout(gtx,
 		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
 			size := image.Pt(gtx.Constraints.Max.X, maxInt(gtx.Constraints.Min.Y, gtx.Dp(height)))
 			paint.FillShape(gtx.Ops, colLine, clip.RRect{Rect: image.Rectangle{Max: size}, NE: 6, NW: 6, SE: 6, SW: 6}.Op(gtx.Ops))
@@ -159,6 +163,13 @@ func (u *UI) Editor(gtx layout.Context, editor *widget.Editor, hint string, heig
 			})
 		}),
 	)
+	if setCaretEnd {
+		// The editor can clamp clicks beyond short text to column zero. Restore
+		// the intentional end placement after its pointer handling.
+		end := editor.Len()
+		editor.SetCaret(end, end)
+	}
+	return dims
 }
 
 func (u *UI) editorFocusTag(editor *widget.Editor) *editorFocusState {

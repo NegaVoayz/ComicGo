@@ -111,11 +111,10 @@ type UI struct {
 	Screen ScreenMode
 	Fatal  error
 	Press  struct {
-		Tag            struct{}
-		Position       image.Point
-		EditorPosition image.Point
-		HasOrigin      bool
-		EditorHit      bool
+		Tag       struct{}
+		Position  image.Point
+		HasOrigin bool
+		EditorHit bool
 	}
 	EditorFocus   map[*widget.Editor]*editorFocusState
 	FocusedEditor *widget.Editor
@@ -215,3 +214,13 @@ func newAppUI(backend *App) *UI {
 
 // NewUI creates the desktop UI for embedding and tests.
 func NewUI(backend *App) *UI { return newAppUI(backend) }
+
+func (u *UI) editorTextWidth(gtx layout.Context, text string) int {
+	measure := gtx
+	measure.Constraints.Min = image.Point{}
+	measure.Constraints.Max.X = 1 << 20
+	macro := op.Record(measure.Ops)
+	dims := u.Label(measure, text, unit.Sp(13), colText, 1)
+	macro.Stop()
+	return dims.Size.X
+}

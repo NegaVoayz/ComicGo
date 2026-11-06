@@ -163,7 +163,7 @@ type DetailState struct {
 	AuthorList       layout.List
 	AuthorOpen       bool
 	PickerRight      int
-	PickerAnchor     image.Point
+	PickerY          int
 	PickerSuppressed bool
 	AuthorValues     []string
 	TagValues        []string
